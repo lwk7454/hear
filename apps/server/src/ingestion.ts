@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { TranscriptProcessor } from './services/processor'
+import { AudioCleaner } from './services/cleaner'
 
 // Schema for Ingest Request
 const IngestSchema = z.object({
@@ -24,20 +25,26 @@ async function processYoutubeUrl(creatorId: string, url: string) {
   const processor = new TranscriptProcessor();
   const persona = await processor.process(dummyTranscript);
 
-  // 4. Process Audio (The Tier 1 Voice)
-  console.log(`[Brain] processing Tier 1 Voice Clone...`)
+  // 4. Process Audio (The Voice Pipeline)
+  console.log(`[Brain] Starting Audio Processing Pipeline...`)
   // const audio = new AudioService()
-  // const localPath = await audio.downloadAudio(url, creatorId)
-  // const samplePath = await audio.extractSample(localPath, 30)
-  // await vectorDb.saveEmbedding(samplePath) (Future)
+  // const rawPath = await audio.downloadAudio(url, creatorId)
+  
+  // New: Cleaning Pipeline
+  // const cleaner = new AudioCleaner();
+  // const vocalsPath = await cleaner.isolateVoice(rawPath);  // Demucs
+  // const segments = await cleaner.diarize(vocalsPath);      // Pyannote
+  // const bestSample = await audio.extractBestSegment(vocalsPath, segments); // Filter for Creator
+  
+  // await vectorDb.saveEmbedding(bestSample)
 
   // Append Voice Status to response
   return {
     ...persona,
     voice: {
-        tier: "Tier 1 (Instant)",
-        status: "Ready",
-        sample: "mock_sample.wav"
+        tier: "Tier 1 (Higgs V2)",
+        status: "Processing",
+        sample: "processed_vocals.wav"
     }
   };
 }
