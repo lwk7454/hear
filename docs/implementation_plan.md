@@ -40,15 +40,27 @@ We organized as a Monorepo to keep full-stack code accessible.
 - **PersonaRules**: "Never discuss X", "Always be Y".
 - **Conversations**: Text/Audio logs.
 
-### 3. Pipeline Flow (Creator Onboarding)
-1.  **Ingest (Authorized Scan)**: 
-    *   Creator connects OAuth for **YouTube** & **Instagram**.
-    *   **YouTube**: Extract Video Audio (Voice), Transcripts (Style), Titles/Descriptions (Topics), Comments (Engagement Style).
-    *   **Audio Enhancement Pipeline**:
-        1.  **Demucs**: Remove background music and noise (Isolate Vocals).
-        2.  **Pyannote.audio**: Diarization to identify the main speaker (Creator) vs Guests.
-        3.  **Filter**: Keep only "Speaker 0" (Creator) segments > 5sec.
-    *   **Instagram**: Extract Posts (Visual context/Captions), Comments.
+### 3. Ingestion Architecture
+
+The ingestion process is decoupled into two independent stages to support both Authorized Scanning and Public Link Testing.
+
+#### **Stage 1: Discovery (Normalization)**
+*   **Purpose**: Identify and list available content without heavy processing.
+*   **Authorized Mode**: Uses OAuth (YouTube/Instagram) to scan the creator's private/public library and list videos/posts.
+*   **Public Mode**: Accepts a direct URL (e.g., specific YouTube link) and resolves metadata.
+*   **Output**: A standardized list of `ContentItem` references (URL, Title, ID) ready for parsing.
+
+#### **Stage 2: Content Parser (Deep Extraction)**
+*   **Purpose**: Heavy processing of a single content item.
+*   **Input**: A standardized `ContentItem` (e.g., one YouTube video).
+*   **Pipeline**:
+    1.  **YouTube Video**:
+        *   **Audio**: Download -> **Demucs** (Isolate Vocals) -> **Pyannote** (Diarize Creator) -> **Higgs V2** (Voice Access).
+        *   **Text**: Extract Transcript -> DeepSeek Processor (Persona/Style).
+        *   **Engagement**: Scrape top comments -> Analyze Reply Style.
+    2.  **Instagram Post**:
+        *   **Context**: Download Image/Caption.
+        *   **Engagement**: Scrape comments.
 2.  **Process Mind**: Text -> DeepSeek extracting "Style", "Facts", "Beliefs" -> Vector DB.
 3.  **Process Voice**:
     *   *Default*: Extract 30s clean sample -> Generate Voice Embedding.
