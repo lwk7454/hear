@@ -22,9 +22,9 @@ The technical stack is built entirely on Node.js/TypeScript.
     *   URL: `/creator` (in `apps/web`).
     *   State: **Updated**. features "Quick Link" (YouTube) and "Authorized Connect" (Instagram). Dispalys Voice Tier and Engagement Style.
 *   **Ingestion Endpoint**:
-    *   Route: `POST /ingest/youtube` & `POST /ingest/instagram`.
-    *   State: **Implemented**. Supports Text (DeepSeek), Voice (Higgs V2), and Engagement (Comments).
-    *   Current Behavior: Returns structured Persona with mocked analysis.
+    *   Route: `POST /ingest/discover` & `POST /ingest/parse`.
+    *   State: **Refactored**. 2-Step process (Discovery vs Parsing).
+    *   Current Behavior: Discovery lists items; Parser does the heavy lifting (Voice/Text/Engagement).
 
 ## 4. Immediate Next Steps (For Next Agent)
 1.  **Configure Environment**:

@@ -5,10 +5,12 @@
 
 ## 2. Product Pillars
 1.  **Creator-First Onboarding**:
-    *   **Authorized Ingestion**: Securely connect **YouTube & Instagram** via OAuth. We do a deep repo scan:
-        *   **Video/Audio**: For Tier 1/2 Voice Training. **Processed via Demucs (Noise Removal) & Pyannote (Speaker Diarization)** to ensure clean, isolated creator vocals.
-        *   **Meta-Data**: Titles, Descriptions, Post Captions.
-        *   **Social**: Comments (to learn how they reply to fans).
+    *   **Authorized Ingestion**: Securely connect **YouTube & Instagram** via OAuth.
+        *   **Stage 1: Discovery**: We scan the repo to normalized "Content Items" (Videos, Posts).
+        *   **Stage 2: Deep Parsing**:
+            *   **Video/Audio**: For Tier 1 Voice. **Processed via Demucs (Noise Removal) & Pyannote (Diarization)** to ensure clean, isolated vocals.
+            *   **Meta-Data**: Titles, Descriptions, Post Captions.
+            *   **Social**: Comments (to learn how they reply to fans).
     *   **Fine-Tuning Studio**: Simple controls for "Topics to Avoid" (e.g., "Don't talk about my ex") and "Personality Sliders" (Sassy vs. Supportive).
 2.  **Hybrid Engagement**:
     *   **Text Chat (Baseline)**: Always-available, low-cost intimacy for the massive fan base.
