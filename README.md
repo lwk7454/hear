@@ -17,8 +17,6 @@
 ---
 
 ## 1. Vision: The Effortless Digital Twin
-
-## 1. Vision: The Effortless Digital Twin
 **Hear** is an AI platform that allows Creators to scale their intimacy without scaling their effort. Our core value proposition is **Zero-Friction Onboarding**: a creator drops a link to their YouTube or Instagram, and we instantly generate a high-fidelity "Digital Twin" that knows their stories, speaks in their style, and respects their boundaries.
 
 ## 2. Product Pillars
@@ -49,14 +47,14 @@ graph TD
         Processor[DeepSeek / Qwen]
         FastClone[Style Embedder]
         Trainer[LoRA Trainer]
-        VectorDB[(Knowledge Base)]
+        VectorDB["(Knowledge Base)"]
     end
     
     %% AI Core
     subgraph "The Brain (Persona Engine)"
         LLM[Personality Model]
-        Rules[Safety & Topic Guardrails]
-        Memory[Long-Term User Context]
+        Rules["Safety & Topic Guardrails"]
+        Memory["Long-Term User Context"]
     end
     
     %% Interfaces
