@@ -88,14 +88,28 @@ export function CreatorDashboard() {
                                 className="w-full justify-start gap-2"
                                 onClick={async () => {
                                     setStatus('processing')
-                                    const res = await fetch('http://localhost:8000/ingest/instagram', {
+                                    const res = await fetch('http://localhost:8000/ingest/discover', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ creatorId: 'test-user', accessToken: 'mock_token' })
+                                        body: JSON.stringify({ 
+                                            creatorId: 'test-user', 
+                                            platform: 'instagram',
+                                            authCode: 'mock_token' 
+                                        })
                                     })
                                     const json = await res.json()
                                     if (json.status === 'success') {
-                                        setPersona({ ...persona, ig: json.data })
+                                        // For demo purposes, we'll pretend the discovery result is enough to confirm "connection"
+                                        // In a real flow, we'd iterate and parse everything.
+                                        // Here we just mock the nested IG structure the UI expects
+                                        setPersona({ 
+                                            ...persona, 
+                                            ig: {
+                                                source: "Instagram",
+                                                postsScanned: json.data.items.length,
+                                                style: { style: "Connected & Ready to Parse" }
+                                            }
+                                        })
                                         setStatus('ready')
                                     }
                                 }}
