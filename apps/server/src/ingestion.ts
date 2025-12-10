@@ -4,112 +4,132 @@ import { TranscriptProcessor } from './services/processor'
 import { AudioCleaner } from './services/cleaner'
 import { HiggsService } from './services/higgs'
 import { AudioService } from './services/audio'
-
-// Schema for Ingest Request
-const IngestSchema = z.object({
-  creatorId: z.string(),
-  url: z.string().url()
-})
-
-// Mock processing function simulating Official API flow + Real LLM Extraction
-async function processYoutubeUrl(creatorId: string, url: string) {
-  console.log(`[Brain] Authenticating for creator ${creatorId}...`)
-  
-  // 1. Fetch Metadata (Simulated)
-  console.log(`[Brain] Fetching metadata via Google API for ${url}...`)
-  await new Promise(resolve => setTimeout(resolve, 800)) 
-
-  // 2. Fetch Transcript (Simulated)
-  console.log(`[Brain] Downloading secure captions via OAuth...`)
-  const dummyTranscript = "Yo, welcome back to the channel. Today we are talking about mechanical keyboards. I love the clicky sound, but my neighbors hate it. I believe blue switches are the best."
-  
-  // 3. Process via DeepSeek/LLM (The Brain)
-  const processor = new TranscriptProcessor();
-  const persona = await processor.process(dummyTranscript);
-
-  // 4. Process Audio (The Voice Pipeline)
-  console.log(`[Brain] Starting Audio Processing Pipeline...`)
-  const audio = new AudioService()
-  const rawPath = await audio.downloadAudio(url, creatorId)
-  
-  // New: Cleaning Pipeline
-  const cleaner = new AudioCleaner();
-  const vocalsPath = await cleaner.isolateVoice(rawPath);  // Demucs
-  const segments = await cleaner.diarize(vocalsPath);      // Pyannote
-  const bestSample = await audio.extractBestSegment(vocalsPath, segments); // Filter for Creator
-  
-  // 5. Generate Voice Embedding (Higgs V2)
-  console.log(`[Brain] Generating Higgs V2 Voice Embedding...`)
-  const higgs = new HiggsService();
-  const voiceId = await higgs.generateEmbedding(bestSample);
-  
-  // await vectorDb.saveCreatorProfile({ ...persona, voiceId })
-
-  // Append Voice Status to response
-  return {
-    ...persona,
-    voice: {
-        tier: "Tier 1 (Higgs V2)",
-        status: "Ready",
-        voiceId: voiceId,
-        sample: "processed_vocals.wav"
-    }
-  };
-}
-
 import { InstagramService } from './services/instagram'
-import { EngagementProcessor } from './services/engagement'
 
-const IGIngestSchema = z.object({
+// Schema for Step 1: Discovery
+const DiscoverySchema = z.object({
   creatorId: z.string(),
-  accessToken: z.string() // OAuth token passed from frontend
-})
+  platform: z.enum(['youtube', 'instagram']),
+  authCode: z.string().optional() // For OAuth
+});
 
-async function processInstagramToken(creatorId: string, token: string) {
-    console.log(`[Brain] Scanning Instagram for ${creatorId}...`);
-    const ig = new InstagramService();
+// Schema for Step 2: Content Parsing
+const ParseContentSchema = z.object({
+  creatorId: z.string(),
+  contentId: z.string(),
+  type: z.enum(['video', 'post']),
+  url: z.string().url()
+});
+
+/**
+ * Step 1: Discovery Phase
+ * Listing content without heavy processing.
+ */
+async function discoverContent(creatorId: string, platform: string, authCode?: string) {
+    console.log(`[Discovery] Scanning ${platform} for ${creatorId}...`);
     
-    // 1. Fetch Posts
-    const posts = await ig.getPosts(token);
-    
-    // 2. Fetch Comments (Deep Scan)
-    const allComments = [];
-    for (const post of posts) {
-        const comments = await ig.getComments(token, post.id);
-        allComments.push(...comments);
+    if (platform === 'youtube') {
+        // Mock: List recent videos
+        return {
+            items: [
+                { id: "v1", title: "Mechanical Keyboards 101", url: "https://youtube.com/watch?v=101", type: "video", date: "2023-10-01" },
+                { id: "v2", title: "My Coding Setup", url: "https://youtube.com/watch?v=102", type: "video", date: "2023-10-05" }
+            ]
+        };
+    } else if (platform === 'instagram') {
+        const ig = new InstagramService();
+        // Assume authCode is actually an accessToken for this mock
+        const posts = await ig.getPosts(authCode || "mock_token");
+        return {
+            items: posts.map(p => ({
+                id: p.id,
+                title: p.caption?.substring(0, 30) + "...",
+                url: p.media_url,
+                type: "post",
+                date: p.timestamp
+            }))
+        };
     }
-    
-    // 3. Analyze Engagement
-    const engagement = new EngagementProcessor();
-    const style = await engagement.analyzeReplyStyle(allComments);
-    
-    return {
-        source: "Instagram",
-        postsScanned: posts.length,
-        style: style
-    };
+    throw new Error("Unsupported platform");
 }
+
+/**
+ * Step 2: Content Parsing Phase
+ * Heavy lifting: Download, Demucs, Transcribe, Higgs.
+ */
+async function parseContentItem(creatorId: string, item: { url: string, type: string }) {
+    console.log(`[Parser] Processing ${item.type} from ${item.url}...`);
+
+    if (item.type === 'video') {
+         // 1. Text & Audio Pipeline (Refactored from previous monolith)
+         const dummyTranscript = "Yo, welcome back to the channel. Today we are talking about mechanical keyboards.";
+         
+         const processor = new TranscriptProcessor();
+         const persona = await processor.process(dummyTranscript);
+         
+         const audio = new AudioService();
+         const rawPath = await audio.downloadAudio(item.url, creatorId);
+         
+         const cleaner = new AudioCleaner();
+         const vocalsPath = await cleaner.isolateVoice(rawPath);
+         const segments = await cleaner.diarize(vocalsPath);
+         const bestSample = await audio.extractBestSegment(vocalsPath, segments);
+         
+         const higgs = new HiggsService();
+         const voiceId = await higgs.generateEmbedding(bestSample);
+         
+         return {
+             ...persona,
+             voice: {
+                 tier: "Tier 1 (Higgs V2)",
+                 status: "Ready",
+                 voiceId: voiceId
+             }
+         };
+    } else if (item.type === 'post') {
+        // Instagram Post Logic
+        // In a real app, we'd fetch the specific post details again or pass them in
+        return { status: "processed", analysis: "Visual context extracted (Mock)" };
+    }
+}
+
 
 export async function ingestionRoutes(fastify: FastifyInstance) {
-  fastify.post('/ingest/youtube', async (request, reply) => {
+  // Step 1: Discover
+  fastify.post('/ingest/discover', async (request, reply) => {
     try {
-      const body = IngestSchema.parse(request.body)
-      const result = await processYoutubeUrl(body.creatorId, body.url)
-      return { status: 'success', data: result }
-    } catch (e) {
-      reply.code(400)
-      return { status: 'error', error: e }
-    }
-  })
-
-  fastify.post('/ingest/instagram', async (request, reply) => {
-    try {
-        const body = IGIngestSchema.parse(request.body);
-        const result = await processInstagramToken(body.creatorId, body.accessToken);
+        const body = DiscoverySchema.parse(request.body);
+        const result = await discoverContent(body.creatorId, body.platform, body.authCode);
         return { status: 'success', data: result };
     } catch (e) {
-        reply.code(400);
+        reply.code(400); 
         return { status: 'error', error: e };
     }
-  })
+  });
+
+  // Step 2: Parse (The Heavy Worker)
+  fastify.post('/ingest/parse', async (request, reply) => {
+    try {
+        const body = ParseContentSchema.parse(request.body);
+        // Map body to expected item structure
+        const item = { url: body.url, type: body.type };
+        const result = await parseContentItem(body.creatorId, item);
+        return { status: 'success', data: result };
+    } catch (e) {
+        reply.code(400); 
+        return { status: 'error', error: e };
+    }
+  });
+
+  // Legacy (Keep for backward compatibility during migration if needed, or remove)
+  // Re-mapping old /ingest/youtube to use parseContentItem internally for "Quick Link" mode
+  fastify.post('/ingest/youtube', async (request, reply) => {
+      try {
+        const body = z.object({ creatorId: z.string(), url: z.string().url() }).parse(request.body);
+        const result = await parseContentItem(body.creatorId, { url: body.url, type: 'video' });
+        return { status: 'success', data: result };
+      } catch (e) {
+          reply.code(400); return { status: 'error', error: e };
+      }
+  });
 }
