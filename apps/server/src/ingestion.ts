@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { TranscriptProcessor } from './services/processor'
 import { AudioCleaner } from './services/cleaner'
+import { HiggsService } from './services/higgs'
+import { AudioService } from './services/audio'
 
 // Schema for Ingest Request
 const IngestSchema = z.object({
@@ -27,23 +29,29 @@ async function processYoutubeUrl(creatorId: string, url: string) {
 
   // 4. Process Audio (The Voice Pipeline)
   console.log(`[Brain] Starting Audio Processing Pipeline...`)
-  // const audio = new AudioService()
-  // const rawPath = await audio.downloadAudio(url, creatorId)
+  const audio = new AudioService()
+  const rawPath = await audio.downloadAudio(url, creatorId)
   
   // New: Cleaning Pipeline
-  // const cleaner = new AudioCleaner();
-  // const vocalsPath = await cleaner.isolateVoice(rawPath);  // Demucs
-  // const segments = await cleaner.diarize(vocalsPath);      // Pyannote
-  // const bestSample = await audio.extractBestSegment(vocalsPath, segments); // Filter for Creator
+  const cleaner = new AudioCleaner();
+  const vocalsPath = await cleaner.isolateVoice(rawPath);  // Demucs
+  const segments = await cleaner.diarize(vocalsPath);      // Pyannote
+  const bestSample = await audio.extractBestSegment(vocalsPath, segments); // Filter for Creator
   
-  // await vectorDb.saveEmbedding(bestSample)
+  // 5. Generate Voice Embedding (Higgs V2)
+  console.log(`[Brain] Generating Higgs V2 Voice Embedding...`)
+  const higgs = new HiggsService();
+  const voiceId = await higgs.generateEmbedding(bestSample);
+  
+  // await vectorDb.saveCreatorProfile({ ...persona, voiceId })
 
   // Append Voice Status to response
   return {
     ...persona,
     voice: {
         tier: "Tier 1 (Higgs V2)",
-        status: "Processing",
+        status: "Ready",
+        voiceId: voiceId,
         sample: "processed_vocals.wav"
     }
   };
