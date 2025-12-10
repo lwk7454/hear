@@ -41,7 +41,7 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
         // Assume authCode is actually an accessToken for this mock
         const posts = await ig.getPosts(authCode || "mock_token");
         return {
-            items: posts.map(p => ({
+            items: posts.map((p: any) => ({
                 id: p.id,
                 title: p.caption?.substring(0, 30) + "...",
                 url: p.media_url,
