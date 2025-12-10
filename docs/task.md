@@ -1,11 +1,11 @@
 # Project Hear - Task List
 
 ## Phase 1: Foundation & "Hollow" MVP (Current Focus)
-- [ ] **Project Scaffolding**
-    - [ ] Initialize Monorepo (Turborepo or simple root)
-    - [ ] Setup Frontend (Next.js, Tailwind, Shadcn)
-    - [ ] Setup Backend (Node.js/TypeScript for AI Orchestration)
-    - [ ] Setup Database (Postgres/Supabase schema)
+- [x] **Project Scaffolding**
+    - [x] Initialize Monorepo (Turborepo or simple root)
+    - [x] Setup Frontend (Next.js, Tailwind, Shadcn)
+    - [x] Setup Backend (Node.js/TypeScript for AI Orchestration)
+    - [x] Setup Database (Postgres/Supabase schema)
 - [/] **Ingestion Data Pipeline (Node.js)**
     - [x] Setup Ingestion Endpoint Structure (Node.js)
     - [x] Setup YouTube Data API Client (googleapis)
