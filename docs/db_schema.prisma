@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"] // Enable pgvector
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector]
+}
+
+model Creator {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Auth tokens for ingestion
+  authConnections PlatformConnection[]
+
+  // The generated Digital Twin
+  persona PersonaProfile?
+
+  // Ingested Data
+  contents ContentItem[]
+}
+
+model PlatformConnection {
+  id        String   @id @default(uuid())
+  platform  String   // "YOUTUBE", "INSTAGRAM"
+  accessToken String
+  refreshToken String?
+  expiresAt DateTime?
+  
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id])
+}
+
+model PersonaProfile {
+  id        String   @id @default(uuid())
+  creatorId String   @unique
+  creator   Creator  @relation(fields: [creatorId], references: [id])
+
+  // Extracted "Mind"
+  tone      String?  // "Sarcastic, Fast-paced"
+  keywords  String[] // ["Tech", "Keyboards"]
+  facts     String[] // ["Hates brown switches", "Lives in SF"]
+  
+  // Voice Config
+  voiceTier String   @default("TIER_1") // TIER_1 (Embedding) | TIER_2 (LoRA)
+  voiceRef  String?  // Path to embedding or LoRA adapter ID
+
+  updatedAt DateTime @updatedAt
+}
+
+model ContentItem {
+  id          String   @id @default(uuid())
+  creatorId   String
+  creator     Creator  @relation(fields: [creatorId], references: [id])
+  
+  platform    String   // "YOUTUBE", "INSTAGRAM"
+  externalId  String   // YouTube Video ID, IG Post ID
+  
+  title       String?
+  description String?
+  publishedAt DateTime?
+
+  // For YouTube
+  transcript  String?  @db.Text
+  audioPath   String?  // /storage/audio/vid_123.wav
+
+  // For IG
+  imagePath   String?
+  caption     String?
+
+  // Engagement
+  comments    Comment[]
+
+  // RAG Chunks
+  embeddings  MemoryChunk[]
+}
+
+model Comment {
+  id            String   @id @default(uuid())
+  contentItemId String
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
+  
+  authorName    String
+  text          String   @db.Text
+  
+  // Did the creator reply? (For learning reply style)
+  creatorReply  String?  @db.Text
+}
+
+model MemoryChunk {
+  id            String   @id @default(uuid())
+  contentItemId String
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
+
+  content       String   @db.Text
+  embedding     Unsupported("vector(1536)")? // OpenAI/DeepSeek embedding size
+
+  createdAt     DateTime @default(now())
+}
