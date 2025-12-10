@@ -57,6 +57,39 @@ async function processYoutubeUrl(creatorId: string, url: string) {
   };
 }
 
+import { InstagramService } from './services/instagram'
+import { EngagementProcessor } from './services/engagement'
+
+const IGIngestSchema = z.object({
+  creatorId: z.string(),
+  accessToken: z.string() // OAuth token passed from frontend
+})
+
+async function processInstagramToken(creatorId: string, token: string) {
+    console.log(`[Brain] Scanning Instagram for ${creatorId}...`);
+    const ig = new InstagramService();
+    
+    // 1. Fetch Posts
+    const posts = await ig.getPosts(token);
+    
+    // 2. Fetch Comments (Deep Scan)
+    const allComments = [];
+    for (const post of posts) {
+        const comments = await ig.getComments(token, post.id);
+        allComments.push(...comments);
+    }
+    
+    // 3. Analyze Engagement
+    const engagement = new EngagementProcessor();
+    const style = await engagement.analyzeReplyStyle(allComments);
+    
+    return {
+        source: "Instagram",
+        postsScanned: posts.length,
+        style: style
+    };
+}
+
 export async function ingestionRoutes(fastify: FastifyInstance) {
   fastify.post('/ingest/youtube', async (request, reply) => {
     try {
@@ -66,6 +99,17 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
     } catch (e) {
       reply.code(400)
       return { status: 'error', error: e }
+    }
+  })
+
+  fastify.post('/ingest/instagram', async (request, reply) => {
+    try {
+        const body = IGIngestSchema.parse(request.body);
+        const result = await processInstagramToken(body.creatorId, body.accessToken);
+        return { status: 'success', data: result };
+    } catch (e) {
+        reply.code(400);
+        return { status: 'error', error: e };
     }
   })
 }
