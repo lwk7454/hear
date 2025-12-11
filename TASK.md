@@ -20,6 +20,15 @@
     - [x] Basic UI Scaffolding
     - [x] Implement "Persona Config" (System Prompt Builder)
     - [ ] Implement Text Chat Interface (Baseline)
+- [x] **End-User App (Consumer-Facing)**
+    - [x] Scaffold Next.js App (apps/app)
+    - [x] Implement Authentication UI (SSO: Google, Meta)
+    - [x] Implement Discovery/Catalog Page
+    - [x] Implement Creator Profile Page (Deep Linking)
+    - [x] Implement Chat Interface (Text + Voice UI Modes)
+    - [ ] Connect to Backend APIs
+    - [ ] Integrate Voice Tier 1 (Async with Higgs)
+    - [ ] Integrate Voice Tier 2 (Duplex with Moshi)
 - [ ] **Voice Layer (Tier 2 Premium)**
     - [ ] Setup GPU Worker for LoRA Training
     - [ ] Implement Moshi Fine-Tuning Pipeline

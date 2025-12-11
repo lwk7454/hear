@@ -9,10 +9,12 @@
 ## 📚 Project Documentation
 *   **[Executive Summary](docs/executive_summary.md)**: Product Vision & Pillars.
 *   **[Implementation Plan](docs/implementation_plan.md)**: Detailed technical architecture & standardized ingestion.
+*   **[App Architecture](docs/app_architecture.md)**: End-User App (apps/app) architecture, API contracts, and integration patterns.
 *   **[Handover](docs/handover.md)**: Current status & immediate next steps.
 *   **[Task List](docs/task.md)**: Roadmap progress.
 *   **[Integration Guide](docs/integration_guide.md)**: Setup guides (e.g., Local Moshi).
 *   **[Production Strategy](docs/production_strategy.md)**: Deployment & Safety.
+
 
 ---
 
@@ -33,7 +35,9 @@
     *   **Voice-to-Voice (Premium)**: High-fidelity, emotional audio calls for super-fans, utilizing the same "Brain" but adding the "Mouth".
 
 ## 3. Architecture Overview
-We separate the **Persona Brain** from the **Interaction Modality**.
+We separate the **Persona Brain** from the **Interaction Modality**, and provide **two distinct UX surfaces**:
+- **Creator Dashboard** (`apps/web`): For creators to configure and train their AI clones
+- **End-User App** (`apps/app`): For fans to discover and interact with creator clones
 
 ```mermaid
 ---
@@ -44,6 +48,7 @@ graph TD
     %% Input Sources
     subgraph Ingestion ["Ingestion Pipeline (Node.js)"]
         YT[YouTube API]
+        IG[Instagram API]
         Processor[DeepSeek / Qwen]
         FastClone[Style Embedder]
         Trainer[LoRA Trainer]
@@ -58,7 +63,13 @@ graph TD
     end
     
     %% Interfaces
-    subgraph "Interaction Layer"
+    subgraph "Creator Interface"
+        CreatorWeb["Dashboard (apps/web)"]
+        PersonaConfig["Persona Configuration"]
+    end
+    
+    subgraph "End-User Interface"
+        ConsumerApp["Mobile App (apps/app)"]
         TextUI[Text Chat]
         VoiceUI["Voice Mode (Moshi/Higgs V2)"]
     end
@@ -72,8 +83,12 @@ graph TD
     Trainer -->|Adapter| VoiceUI
     VectorDB -->|Context Retrieval| LLM
     Rules -->|Constraints| LLM
+    CreatorWeb -->|Configure| Rules
+    PersonaConfig -->|Tune| LLM
     LLM -->|Reply| TextUI
     LLM -->|Reply| VoiceUI
+    ConsumerApp -->|User Requests| TextUI
+    ConsumerApp -->|User Requests| VoiceUI
 ```
 
 ## 4. Workload & Roadmap
