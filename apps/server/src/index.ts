@@ -1,6 +1,10 @@
+import 'dotenv/config'
 import Fastify, { FastifyInstance } from 'fastify'
+import { authRoutes } from './routes/auth'
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
+import jwt from '@fastify/jwt'
+import cookie from '@fastify/cookie'
 import { MoshiClient } from './moshi-client'
 import { ingestionRoutes } from './ingestion'
 
@@ -19,10 +23,23 @@ server.get('/health', async () => {
 const start = async () => {
   try {
     // 1. Register Plugins
-    await server.register(cors, { origin: true })
+    await server.register(cors, { origin: true, credentials: true }) // Enable cookies
     await server.register(websocket)
+    
+    server.register(jwt, {
+      secret: process.env.JWT_SECRET || 'supersecret123',
+      cookie: {
+        cookieName: 'token',
+        signed: false
+      }
+    })
+    server.register(cookie, {
+        secret: process.env.COOKIE_SECRET || 'another-secret-123',
+        parseOptions: {} 
+    })
 
     // 2. Register Routes
+    server.register(authRoutes)
     server.register(ingestionRoutes)
 
     // 3. Register WebSocket Endpoint
@@ -37,14 +54,16 @@ const start = async () => {
            connection.socket.send(audioChunk)
         })
 
-        connection.socket.on('message', (message: Buffer) => {
-          moshi.sendAudioChunk(message)
-        })
+        if (connection && connection.socket) {
+            connection.socket.on('message', (message: Buffer) => {
+                moshi.sendAudioChunk(message)
+            })
 
-        connection.socket.on('close', () => {
-          fastify.log.info('Client disconnected')
-          moshi.disconnect()
-        })
+            connection.socket.on('close', () => {
+                fastify.log.info('Client disconnected')
+                moshi.disconnect()
+            })
+        }
       })
     })
 

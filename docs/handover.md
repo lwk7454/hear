@@ -43,13 +43,13 @@ The technical stack is built entirely on Node.js/TypeScript.
 
 ## 4. Immediate Next Steps (For Next Agent)
 
-### Backend Integration (Priority)
+### Backend Integration (Complete)
 1.  **Configure Environment**:
-    *   Add `OPENAI_BASE_URL` (DeepSeek), `YOUTUBE_CLIENT_ID`, `IG_CLIENT_ID` to `.env`.
-2.  **Connect Database** (CRITICAL):
-    *   `packages/db` has the schema.
-    *   **Action**: Create a Supabase project, get the `DATABASE_URL`, and run `pnpm prisma db push`.
-    *   *Then* update `apps/server` to actually save the ingested data (currently it just returns the JSON).
+    *   Add `OPENAI_BASE_URL` (DeepSeek), `YOUTUBE_CLIENT_ID`, `IG_CLIENT_ID`, `JWT_SECRET`, `COOKIE_SECRET` to `.env`.
+2.  **Connect Database** (Completed):
+    *   `packages/db` has been linked.
+    *   `auth.ts` handles OAuth token storage.
+    *   `ingestion.ts` uses stored tokens for scanning.
 
 ### End-User App Integration
 3.  **Wire Up App APIs**:
@@ -132,14 +132,14 @@ The platform now has a **two-app architecture**:
 
 **Current Working Features**:
 - ✅ Creator Dashboard UI
-- ✅ Ingestion pipeline (YouTube/Instagram)
+- ✅ Ingestion pipeline (YouTube/Instagram) - *Backend Implemented*
 - ✅ End-User App UI (all pages)
 - ✅ Voice chat UI mockups
 
 **Pending Integration**:
-- ⏳ Database persistence
+- ⏳ Database persistence (Auth tokens & User Session implemented, Content storage next)
 - ⏳ API endpoints for app
-- ⏳ Authentication flow
+- ✅ Authentication flow (Creator side implemented via Session/JWT)
 - ⏳ Voice processing (Higgs/Moshi)
 
 **Documentation**:

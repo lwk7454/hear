@@ -393,10 +393,14 @@ headers: {
 
 ### Environment Variables
 ```env
-NEXT_PUBLIC_API_URL=https://api.hear.app
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-NEXT_PUBLIC_APP_URL=https://hear.app
+# API Configuration
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Supabase (Dev Environment)
+# Run 'npx supabase start' to get these values
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-local-anon-key
 ```
 
 ### Build & Deploy
@@ -404,7 +408,7 @@ NEXT_PUBLIC_APP_URL=https://hear.app
 # Build
 pnpm build
 
-# Preview production build
+# Preview prod build
 pnpm start
 
 # Deploy (Vercel example)

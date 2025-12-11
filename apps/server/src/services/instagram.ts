@@ -3,8 +3,8 @@ export class InstagramService {
   private clientSecret: string;
   
   constructor() {
-    this.clientId = process.env.IG_CLIENT_ID || 'mock_id';
-    this.clientSecret = process.env.IG_CLIENT_SECRET || 'mock_secret';
+    this.clientId = process.env.IG_CLIENT_ID || '';
+    this.clientSecret = process.env.IG_CLIENT_SECRET || '';
   }
 
   /**
@@ -12,30 +12,25 @@ export class InstagramService {
    * Scope: instagram_basic, instagram_content_publish
    */
   async getPosts(accessToken: string, limit: number = 5) {
-    console.log(`[Instagram] Fetching ${limit} posts with token ${accessToken.substring(0, 5)}...`);
+    if (!accessToken || accessToken === 'mock_token') {
+         // TODO: Remove this check once fully live, but for now prevent real calls with bad tokens
+         throw new Error("Invalid access token for Instagram.");
+    }
+
+    console.log(`[Instagram] Fetching ${limit} posts...`);
     
     // Official Graph API endpoint: https://graph.instagram.com/me/media
-    // Fields: id,caption,media_type,media_url,permalink,timestamp
+    const fields = "id,caption,media_type,media_url,permalink,timestamp";
+    const url = `https://graph.instagram.com/me/media?fields=${fields}&access_token=${accessToken}&limit=${limit}`;
     
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 600));
-
-    return [
-        {
-            id: "ig_post_1",
-            caption: "Chilling at the coffee shop #coding #life",
-            media_type: "IMAGE",
-            media_url: "https://mock.instagram/img1.jpg",
-            timestamp: new Date().toISOString()
-        },
-        {
-            id: "ig_post_2",
-            caption: "New video is up on YouTube! Link in bio.",
-            media_type: "CAROUSEL_ALBUM",
-            media_url: "https://mock.instagram/img2.jpg",
-            timestamp: new Date(Date.now() - 86400000).toISOString()
-        }
-    ];
+    const res = await fetch(url);
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(`Instagram API Error: ${error.error?.message || res.statusText}`);
+    }
+    
+    const data = await res.json();
+    return data.data || [];
   }
 
   /**
@@ -45,11 +40,15 @@ export class InstagramService {
     console.log(`[Instagram] Fetching comments for ${mediaId}...`);
     // Graph API: /{media-id}/comments
     
-     await new Promise(resolve => setTimeout(resolve, 400));
-     
-     return [
-         { id: "c1", text: "Love this setup!", username: "fan_1" },
-         { id: "c2", text: "What keyboard is that?", username: "fan_2" }
-     ];
+    const url = `https://graph.instagram.com/${mediaId}/comments?fields=id,text,username&access_token=${accessToken}`;
+    const res = await fetch(url);
+    
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(`Instagram API Error: ${error.error?.message || res.statusText}`);
+    }
+
+    const data = await res.json();
+    return data.data || [];
   }
 }

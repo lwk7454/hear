@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,6 +11,72 @@ export function CreatorDashboard() {
   const [url, setUrl] = useState('')
   const [status, setStatus] = useState<'idle' | 'processing' | 'ready'>('idle')
   const [persona, setPersona] = useState<any>(null)
+  
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  
+  // Check Session
+  useEffect(() => {
+    fetch('http://localhost:8000/auth/me', { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.authenticated) {
+                window.location.href = '/login';
+            }
+        })
+        .catch(() => window.location.href = '/login');
+  }, []);
+
+  // Handle OAuth Callback Success
+  useEffect(() => {
+    const connected = searchParams.get('connected')
+    if (connected) {
+        setStatus('processing')
+        // Trigger Discovery
+        fetch('http://localhost:8000/ingest/discover', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ 
+                platform: connected, 
+                // authCode not needed as token is in DB now
+            })
+        })
+        .then(res => res.json())
+        .then(json => {
+            if (json.status === 'success') {
+                // Merge data
+                if (connected === 'instagram') {
+                     setPersona((prev: any) => ({ 
+                        ...prev, 
+                        ig: {
+                            source: "Instagram",
+                            postsScanned: json.data.items.length,
+                            style: { style: "Connected & Scanned" }
+                        }
+                    }))
+                } else if (connected === 'youtube') {
+                    // Just show a success state or similar
+                     setPersona((prev: any) => ({ 
+                        ...prev, 
+                        yt: {
+                            source: "YouTube",
+                            videosScanned: json.data.items.length,
+                            style: { style: "Connected & Scanned" }
+                        }
+                    }))
+                }
+                setStatus('ready')
+                // Clean URL
+                router.replace('/creator')
+            }
+        })
+        .catch(e => {
+            console.error(e)
+            setStatus('idle')
+        })
+    }
+  }, [searchParams, router])
 
   const handleIngest = async () => {
     setStatus('processing')
@@ -18,7 +85,8 @@ export function CreatorDashboard() {
       const res = await fetch('http://localhost:8000/ingest/youtube', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ creatorId: 'test-user', url })
+        credentials: 'include',
+        body: JSON.stringify({ url })
       })
       const json = await res.json()
       
@@ -36,9 +104,19 @@ export function CreatorDashboard() {
 
   return (
     <div className="w-full max-w-5xl mx-auto p-6 space-y-8">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-3xl font-bold tracking-tight">Creator Studio</h2>
-        <p className="text-muted-foreground">Train your Digital Twin by ingesting your content.</p>
+      <div className="flex flex-col gap-2 relative">
+         <div className="flex items-center justify-between">
+            <div>
+                 <h2 className="text-3xl font-bold tracking-tight">Creator Studio</h2>
+                 <p className="text-muted-foreground">Train your Digital Twin by ingesting your content.</p>
+            </div>
+            <Button variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={async () => {
+                 await fetch('http://localhost:8000/auth/logout', { method: 'POST', credentials: 'include' });
+                 window.location.href = '/';
+            }}>
+                Logout
+            </Button>
+         </div>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
@@ -79,42 +157,35 @@ export function CreatorDashboard() {
                             <CardDescription>Connect accounts for a deep repository scan.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <Button variant="outline" className="w-full justify-start gap-2" disabled>
-                                <img src="https://www.svgrepo.com/show/475692/youtube-color.svg" className="w-5 h-5" alt="YT"/>
-                                Connect YouTube (Coming Soon)
+                            <Button variant="outline" className="w-full justify-start gap-2" 
+                                onClick={async () => {
+                                    // Use Session
+                                    const res = await fetch('http://localhost:8000/auth/youtube/url', { method: 'GET', headers: { 'Accept': 'application/json' } , credentials: 'include' });
+                                    if (res.status === 401) {
+                                         window.location.href = '/login';
+                                         return;
+                                    }
+                                    const { url } = await res.json();
+                                    window.location.href = url;
+                                }}
+                            >
+                                <img src="/assets/youtube.svg" className="w-5 h-5" alt="YT"/>
+                                Connect YouTube
                             </Button>
                             <Button 
                                 variant="outline" 
                                 className="w-full justify-start gap-2"
                                 onClick={async () => {
-                                    setStatus('processing')
-                                    const res = await fetch('http://localhost:8000/ingest/discover', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ 
-                                            creatorId: 'test-user', 
-                                            platform: 'instagram',
-                                            authCode: 'mock_token' 
-                                        })
-                                    })
-                                    const json = await res.json()
-                                    if (json.status === 'success') {
-                                        // For demo purposes, we'll pretend the discovery result is enough to confirm "connection"
-                                        // In a real flow, we'd iterate and parse everything.
-                                        // Here we just mock the nested IG structure the UI expects
-                                        setPersona({ 
-                                            ...persona, 
-                                            ig: {
-                                                source: "Instagram",
-                                                postsScanned: json.data.items.length,
-                                                style: { style: "Connected & Ready to Parse" }
-                                            }
-                                        })
-                                        setStatus('ready')
+                                    const res = await fetch('http://localhost:8000/auth/instagram/url', { method: 'GET', credentials: 'include' });
+                                     if (res.status === 401) {
+                                         window.location.href = '/login';
+                                         return;
                                     }
+                                    const { url } = await res.json();
+                                    window.location.href = url;
                                 }}
                             >
-                                <img src="https://www.svgrepo.com/show/452229/instagram-1.svg" className="w-5 h-5" alt="IG"/>
+                                <img src="/assets/instagram.svg" className="w-5 h-5" alt="IG"/>
                                 Connect Instagram
                             </Button>
                         </CardContent>

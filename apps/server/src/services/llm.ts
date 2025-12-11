@@ -10,7 +10,7 @@ export class LLMService {
       modelName: process.env.LLM_MODEL || "gpt-4o",
       temperature: 0.7,
       configuration: {
-        baseURL: process.env.LLM_BASE_URL, 
+        baseURL: process.env.OPENAI_BASE_URL, 
       }
     });
   }

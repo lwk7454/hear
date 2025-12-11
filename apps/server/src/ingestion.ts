@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify'
+import { google } from 'googleapis'
 import { z } from 'zod'
 import { TranscriptProcessor } from './services/processor'
 import { AudioCleaner } from './services/cleaner'
@@ -21,6 +22,8 @@ const ParseContentSchema = z.object({
   url: z.string().url()
 });
 
+import { prisma } from './lib/db';
+
 /**
  * Step 1: Discovery Phase
  * Listing content without heavy processing.
@@ -28,28 +31,104 @@ const ParseContentSchema = z.object({
 async function discoverContent(creatorId: string, platform: string, authCode?: string) {
     console.log(`[Discovery] Scanning ${platform} for ${creatorId}...`);
     
-    if (platform === 'youtube') {
-        // Mock: List recent videos
-        return {
-            items: [
-                { id: "v1", title: "Mechanical Keyboards 101", url: "https://youtube.com/watch?v=101", type: "video", date: "2023-10-01" },
-                { id: "v2", title: "My Coding Setup", url: "https://youtube.com/watch?v=102", type: "video", date: "2023-10-05" }
-            ]
-        };
-    } else if (platform === 'instagram') {
-        const ig = new InstagramService();
-        // Assume authCode is actually an accessToken for this mock
-        const posts = await ig.getPosts(authCode || "mock_token");
-        return {
-            items: posts.map((p: any) => ({
-                id: p.id,
-                title: p.caption?.substring(0, 30) + "...",
-                url: p.media_url,
-                type: "post",
-                date: p.timestamp
-            }))
-        };
+    // 1. Fetch Connection
+    // Try to find the user. In our demo auth flow, we used email = creatorId@demo.com
+    // We need to resolve the creatorId to the UUID in the DB or use the demo email approach.
+    // For consistency with Auth route, let's assume we find by email constructed from creatorId if not found by ID.
+    
+    let creator = await prisma.creator.findFirst({
+        where: { OR: [{ id: creatorId }, { email: `${creatorId}@demo.com` }] },
+        include: { authConnections: true }
+    });
+
+    if (!creator) {
+        // Fallback for demo: if not in DB, maybe just return empty or mock if strictly required.
+        console.warn(`Creator ${creatorId} not found in DB. Returning mock/empty.`);
+        if (platform === 'youtube') {
+             // Default Mocks if no auth
+             return { items: [{ id: "v1", title: "Demo Video (No Auth)", url: "...", type: "video" }] };
+        }
     }
+
+    const connection = creator?.authConnections.find((c: { platform: string }) => c.platform === platform.toUpperCase());
+    
+    if (platform === 'youtube') {
+        if (!connection) {
+             console.warn("No YouTube connection found.");
+             return { items: [] };
+        }
+        if (!connection || !connection.accessToken) {
+            // TODO: Handle refresh token flow if access token expired
+            throw new Error("No YouTube connection found. Please authorize.");
+        }
+        
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.YOUTUBE_CLIENT_ID,
+            process.env.YOUTUBE_CLIENT_SECRET
+        );
+        
+        oauth2Client.setCredentials({ 
+            access_token: connection.accessToken,
+            refresh_token: connection.refreshToken || undefined 
+            // expiry_date?
+        });
+
+        const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+        
+        // List uploaded videos from the user's "uploads" playlist
+        // 1. Get channel "uploads" playlist ID
+        const channelRes = await youtube.channels.list({
+            part: ['contentDetails'],
+            mine: true
+        });
+        
+        const uploadsPlaylistId = channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+        
+        if (!uploadsPlaylistId) {
+             return { items: [] }; // No channel or no uploads
+        }
+
+        // 2. List videos in that playlist
+        const playlistItems = await youtube.playlistItems.list({
+            part: ['snippet', 'contentDetails'],
+            playlistId: uploadsPlaylistId,
+            maxResults: 10
+        });
+        
+        return {
+            items: playlistItems.data.items?.map(item => ({
+                id: item.contentDetails?.videoId || "unknown",
+                title: item.snippet?.title || "Untitled",
+                url: `https://youtube.com/watch?v=${item.contentDetails?.videoId}`,
+                type: "video",
+                date: item.snippet?.publishedAt || new Date().toISOString()
+            })) || []
+        };
+
+    } else if (platform === 'instagram') {
+        if (!connection || !connection.accessToken) {
+             throw new Error("No Instagram connection found. Please authorize.");
+        }
+    
+        const ig = new InstagramService();
+        try {
+            // Pass the real stored token
+            const posts = await ig.getPosts(connection.accessToken);
+            return {
+                items: posts.map((p: any) => ({
+                    id: p.id,
+                    title: p.caption ? p.caption.substring(0, 30) + "..." : "No Caption",
+                    url: p.media_url, // Note: minimal URL, might need permalink
+                    type: "post",
+                    date: p.timestamp
+                }))
+            };
+        } catch (e) {
+            console.error("IG Scan failed", e);
+            throw e;
+        }
+    }
+    
     throw new Error("Unsupported platform");
 }
 
@@ -98,8 +177,16 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   // Step 1: Discover
   fastify.post('/ingest/discover', async (request, reply) => {
     try {
-        const body = DiscoverySchema.parse(request.body);
-        const result = await discoverContent(body.creatorId, body.platform, body.authCode);
+        let user;
+        try {
+             user = await (request as any).jwtVerify() as { id: string };
+        } catch (e) {
+             return reply.code(401).send({ error: "Unauthorized" });
+        }
+        
+        // We still parse body for platform/authCode, but overwrite creatorId
+        const body = DiscoverySchema.omit({ creatorId: true }).parse(request.body);
+        const result = await discoverContent(user.id, body.platform, body.authCode);
         return { status: 'success', data: result };
     } catch (e) {
         reply.code(400); 
@@ -110,10 +197,17 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   // Step 2: Parse (The Heavy Worker)
   fastify.post('/ingest/parse', async (request, reply) => {
     try {
-        const body = ParseContentSchema.parse(request.body);
+        let user;
+        try {
+             user = await (request as any).jwtVerify() as { id: string };
+        } catch (e) {
+             return reply.code(401).send({ error: "Unauthorized" });
+        }
+
+        const body = ParseContentSchema.omit({ creatorId: true }).parse(request.body);
         // Map body to expected item structure
         const item = { url: body.url, type: body.type };
-        const result = await parseContentItem(body.creatorId, item);
+        const result = await parseContentItem(user.id, item);
         return { status: 'success', data: result };
     } catch (e) {
         reply.code(400); 
@@ -121,12 +215,20 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
     }
   });
 
+
   // Legacy (Keep for backward compatibility during migration if needed, or remove)
   // Re-mapping old /ingest/youtube to use parseContentItem internally for "Quick Link" mode
   fastify.post('/ingest/youtube', async (request, reply) => {
       try {
-        const body = z.object({ creatorId: z.string(), url: z.string().url() }).parse(request.body);
-        const result = await parseContentItem(body.creatorId, { url: body.url, type: 'video' });
+        let user;
+        try {
+             user = await (request as any).jwtVerify() as { id: string };
+        } catch (e) {
+             return reply.code(401).send({ error: "Unauthorized" });
+        }
+
+        const body = z.object({ url: z.string().url() }).parse(request.body);
+        const result = await parseContentItem(user.id, { url: body.url, type: 'video' });
         return { status: 'success', data: result };
       } catch (e) {
           reply.code(400); return { status: 'error', error: e };

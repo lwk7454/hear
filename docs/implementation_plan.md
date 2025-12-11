@@ -13,7 +13,7 @@ We use a **Split-Stack Architecture** to leverage the best tools for UI and AI:
 ### Tech Stack
 - **Frontend**: Next.js, TailwindCSS, Shadcn/UI.
 - **Backend**: Node.js (Fastify) for API, LangChain.js for AI Logic.
-- **Database**: PostgreSQL (Supabase) + pgvector.
+- **Database**: PostgreSQL (Supabase - Dev) + pgvector.
 - **Ingestion**: Node.js clients for YouTube/Meta APIs (Official).
 - **AI Models**:
     *   **Brain**: DeepSeek-V3 / Qwen-2.5 (Reasoning).

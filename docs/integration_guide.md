@@ -27,15 +27,35 @@ To move from the current "Hollow MVP" to a fully functional environment, you nee
 
 ## 3. Database (Memory)
 *   **Requirement**: PostgreSQL with `pgvector` support.
-*   **Recommended**: **Supabase** (Free Tier is sufficient).
-*   **Action Items**:
-    1.  Create Supabase Project.
-    2.  Run SQL to enable vector extension: `create extension vector;`
-    3.  **Environment Variables**:
-        ```env
-        SUPABASE_URL=...
-        SUPABASE_SERVICE_ROLE_KEY=...
-        ```
+*   **Recommended**: **Local Supabase** (via Docker/Podman) for zero-latency development.
+
+### Option A: Dev Environment (Local - Preferred)
+This approach eliminates network latency and allows offline development.
+1.  **Prerequisites**: Ensure Docker or Podman is installed and running.
+2.  **Initialize**:
+    ```bash
+    npx supabase init
+    ```
+3.  **Start Services**:
+    ```bash
+    npx supabase start
+    ```
+4.  **Access Dashboard**: Open `http://127.0.0.1:54323` to manage your local database.
+5.  **Environment Variables** (`apps/server/.env`):
+    ```env
+    # From the output of 'npx supabase start'
+    SUPABASE_URL=http://127.0.0.1:54321
+    SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    ```
+
+### Option B: Prod Environment (Cloud)
+1.  Create Supabase Project at [supabase.com](https://supabase.com).
+2.  Run SQL to enable vector extension: `create extension vector;`
+3.  **Environment Variables**:
+    ```env
+    SUPABASE_URL=https://your-project.supabase.co
+    SUPABASE_SERVICE_ROLE_KEY=...
+    ```
 
 ## 4. Voice (The Mouth) - *Optional for Phase 1*
 *   **Requirement**: A GPU Environment for Moshi (or use OpenAI Realtime API as fallback).
