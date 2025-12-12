@@ -6,6 +6,7 @@ import { AudioCleaner } from './services/cleaner'
 import { HiggsService } from './services/higgs'
 import { AudioService } from './services/audio'
 import { InstagramService } from './services/instagram'
+import { YouTubeService } from './services/youtube'
 
 // Schema for Step 1: Discovery
 const DiscoverySchema = z.object({
@@ -53,56 +54,120 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
     const connection = creator?.authConnections.find((c: { platform: string }) => c.platform === platform.toUpperCase());
     
     if (platform === 'youtube') {
-        if (!connection) {
-             console.warn("No YouTube connection found.");
-             return { items: [] };
-        }
         if (!connection || !connection.accessToken) {
             // TODO: Handle refresh token flow if access token expired
             throw new Error("No YouTube connection found. Please authorize.");
         }
         
-        const oauth2Client = new google.auth.OAuth2(
-            process.env.YOUTUBE_CLIENT_ID,
-            process.env.YOUTUBE_CLIENT_SECRET
-        );
+        const ytService = new  YouTubeService(connection.accessToken, connection.refreshToken || undefined);
         
-        oauth2Client.setCredentials({ 
-            access_token: connection.accessToken,
-            refresh_token: connection.refreshToken || undefined 
-            // expiry_date?
-        });
-
-        const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
-        
-        // List uploaded videos from the user's "uploads" playlist
-        // 1. Get channel "uploads" playlist ID
-        const channelRes = await youtube.channels.list({
-            part: ['contentDetails'],
-            mine: true
-        });
-        
-        const uploadsPlaylistId = channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-        
-        if (!uploadsPlaylistId) {
-             return { items: [] }; // No channel or no uploads
+        // 1. Identify the Creator (Channel ID)
+        let channelId; 
+        try {
+            channelId = await ytService.getChannelID();
+        } catch (e) {
+            console.error("Failed to get Channel ID", e);
+            throw new Error("Could not fetch YouTube Channel ID. Connection might be invalid.");
         }
 
-        // 2. List videos in that playlist
-        const playlistItems = await youtube.playlistItems.list({
-            part: ['snippet', 'contentDetails'],
-            playlistId: uploadsPlaylistId,
-            maxResults: 10
-        });
+        // 2. Get Uploads Playlist
+        const uploadsId = await ytService.getUploadsPlaylistId();
+        if (!uploadsId) return { items: [] };
+
+        // 3. Get Recent Videos
+        const videos = await ytService.getPlaylistItems(uploadsId, 10);
         
-        return {
-            items: playlistItems.data.items?.map(item => ({
-                id: item.contentDetails?.videoId || "unknown",
-                title: item.snippet?.title || "Untitled",
-                url: `https://youtube.com/watch?v=${item.contentDetails?.videoId}`,
+        // 4. Deep Scan: Comments & Replies
+        const itemsWithEngagement = await Promise.all(videos.map(async (v) => {
+            const videoId = v.contentDetails?.videoId || "";
+            if (!videoId) return null;
+
+            // 4a. Fetch detailed video stats (views, likes, full desc)
+            const details = await ytService.getVideoDetails(videoId);
+            const viewCount = details?.statistics?.viewCount || "0";
+            const likeCount = details?.statistics?.likeCount || "0";
+            // Use details description if available, otherwise snippet from playlist (which might be truncated)
+            const description = details?.snippet?.description || v.snippet?.description || "";
+
+            const comments = await ytService.getVideoComments(videoId, 20);
+            
+            console.log(`[Engage] V:${videoId} | Mine:${channelId} | Comments:${comments.length}`);
+
+            // Filter: Find threads where the creator (channelId) has participated
+            const relevantThreads = comments.filter(thread => {
+                const topLevel = thread.snippet?.topLevelComment?.snippet;
+                const replies = thread.replies?.comments || [];
+                
+                // Did creator write the top comment? (Unlikely for "replies", but possible for own posts)
+                const isCreatorTop = topLevel?.authorChannelId?.value === channelId;
+                
+                // Did creator reply?
+                const hasCreatorReply = replies.some(r => r.snippet?.authorChannelId?.value === channelId);
+                
+                if (isCreatorTop || hasCreatorReply) {
+                     console.log(`[Match] Thread ${thread.id} has creator interaction.`);
+                }
+                
+                return isCreatorTop || hasCreatorReply;
+            }).map(thread => {
+                const top = thread.snippet?.topLevelComment?.snippet;
+                const creatorReply = thread.replies?.comments?.find(r => r.snippet?.authorChannelId?.value === channelId);
+                
+                return {
+                    id: thread.id,
+                    author: top?.authorDisplayName,
+                    text: top?.textDisplay,
+                    creatorReply: creatorReply?.snippet?.textDisplay,
+                    authorImage: top?.authorProfileImageUrl
+                };
+            });
+
+
+            // CORRECT APPROACH: custom find -> skip/create
+            const existing = await prisma.contentItem.findFirst({
+                where: { externalId: videoId, platform: 'YOUTUBE', creatorId }
+            });
+            
+            let dbItem;
+            if (existing) {
+                // SKIP UPDATE - RETURN EXISTING to prevent overwriting manual changes or wasting ops
+                dbItem = existing;
+            } else {
+                dbItem = await prisma.contentItem.create({
+                    data: {
+                        creatorId: creatorId,
+                        platform: 'YOUTUBE',
+                        externalId: videoId,
+                        title: v.snippet?.title || "Untitled",
+                        description: description,
+                        thumbnail: v.snippet?.thumbnails?.medium?.url,
+                        publishedAt: v.snippet?.publishedAt ? new Date(v.snippet.publishedAt) : undefined,
+                        status: 'PENDING'
+                    }
+                })
+            }
+
+            return {
+                id: dbItem.id, // Use DB ID
+                externalId: videoId,
+                title: dbItem.title,
+                description: dbItem.description,
+                thumbnail: dbItem.thumbnail,
+                status: dbItem.status,
+                url: `https://youtube.com/watch?v=${videoId}`,
                 type: "video",
-                date: item.snippet?.publishedAt || new Date().toISOString()
-            })) || []
+                date: dbItem.publishedAt?.toISOString() || new Date().toISOString(),
+                stats: {
+                    comments: relevantThreads.length,
+                    views: viewCount,
+                    likes: likeCount
+                },
+                comments: relevantThreads
+            };
+        }));
+
+        return {
+            items: itemsWithEngagement.filter(i => i !== null)
         };
 
     } else if (platform === 'instagram') {
@@ -114,15 +179,46 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
         try {
             // Pass the real stored token
             const posts = await ig.getPosts(connection.accessToken);
-            return {
-                items: posts.map((p: any) => ({
-                    id: p.id,
-                    title: p.caption ? p.caption.substring(0, 30) + "..." : "No Caption",
-                    url: p.media_url, // Note: minimal URL, might need permalink
+            
+            // Persist to DB (Sync)
+            const syncedItems = await Promise.all(posts.map(async (p: any) => {
+                 const existing = await prisma.contentItem.findFirst({
+                     where: { externalId: p.id, platform: 'INSTAGRAM', creatorId }
+                 });
+
+                 const data = {
+                     creatorId,
+                     platform: 'INSTAGRAM',
+                     externalId: p.id,
+                     title: p.caption ? p.caption.substring(0, 50) + "..." : "Untitled Post",
+                     description: p.caption || "",
+                     imagePath: p.media_url,
+                     publishedAt: p.timestamp ? new Date(p.timestamp) : undefined,
+                 };
+
+                 let dbItem;
+                 if (existing) {
+                     // SKIP UPDATE
+                     dbItem = existing;
+                 } else {
+                     dbItem = await prisma.contentItem.create({ 
+                         data: { ...data, status: 'PENDING' } 
+                     });
+                 }
+
+                 return {
+                    id: dbItem.id,
+                    externalId: p.id,
+                    title: dbItem.title,
+                    description: dbItem.description, // Full caption
+                    url: dbItem.imagePath, // IG Media URL
                     type: "post",
-                    date: p.timestamp
-                }))
-            };
+                    date: dbItem.publishedAt?.toISOString(),
+                    stats: { views: "0", likes: "0", comments: 0 } // Mock stats for now
+                 };
+            }));
+
+            return { items: syncedItems };
         } catch (e) {
             console.error("IG Scan failed", e);
             throw e;
@@ -136,44 +232,156 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
  * Step 2: Content Parsing Phase
  * Heavy lifting: Download, Demucs, Transcribe, Higgs.
  */
-async function parseContentItem(creatorId: string, item: { url: string, type: string }) {
+import { storageService } from './services/storage'
+
+async function parseContentItem(creatorId: string, item: { url: string, type: string, contentId?: string }) {
     console.log(`[Parser] Processing ${item.type} from ${item.url}...`);
 
     if (item.type === 'video') {
-         // 1. Text & Audio Pipeline (Refactored from previous monolith)
-         const dummyTranscript = "Yo, welcome back to the channel. Today we are talking about mechanical keyboards.";
+         // 1. Text & Audio Pipeline
+         const audio = new AudioService();
+         
+         // A. Build Brain (Text Processing)
+         const metadata = await audio.getVideoMetadata(item.url);
+         const transcript = await audio.getTranscript(item.url, metadata.language);
+         
+         const textContext = `Title: ${metadata.title}\nDescription: ${metadata.description}\nTranscript: ${transcript.slice(0, 15000)}`; // Truncate to avoid context overflow
          
          const processor = new TranscriptProcessor();
-         const persona = await processor.process(dummyTranscript);
+         const personaAnalysis = await processor.process(textContext);
+
+         // Persist Brain Extraction
+         await prisma.personaProfile.upsert({
+             where: { creatorId },
+             create: {
+                 creatorId,
+                 tone: personaAnalysis.style.tone,
+                 keywords: personaAnalysis.style.keywords,
+                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
+             },
+             update: {
+                 tone: personaAnalysis.style.tone,
+                 keywords: personaAnalysis.style.keywords,
+                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
+             }
+         });
          
-         const audio = new AudioService();
+         // B. Audio Pipeline
          const rawPath = await audio.downloadAudio(item.url, creatorId);
+         const ts = Date.now();
+         const rawUrl = await storageService.upload(rawPath, `ingest/${creatorId}/${ts}_raw.mp3`);
          
          const cleaner = new AudioCleaner();
-         const vocalsPath = await cleaner.isolateVoice(rawPath);
-         const segments = await cleaner.diarize(vocalsPath);
-         const bestSample = await audio.extractBestSegment(vocalsPath, segments);
+         // Offload to GPU Worker
+         const { vocalsUrl, segments } = await cleaner.process(rawUrl, creatorId);
          
+         // For MVP Split Arch: Use full vocals as sample
+         const sampleUrl = vocalsUrl; 
+
          const higgs = new HiggsService();
-         const voiceId = await higgs.generateEmbedding(bestSample);
+         // Use rawPath (local) for Higgs mock check since we don't have local vocals
+         const voiceId = await higgs.generateEmbedding(rawPath);
          
          return {
-             ...persona,
+             ...personaAnalysis,
              voice: {
                  tier: "Tier 1 (Higgs V2)",
                  status: "Ready",
                  voiceId: voiceId
+             },
+             artifacts: {
+                 raw: rawUrl,
+                 vocals: vocalsUrl,
+                 sample: sampleUrl,
+                 segments: segments
              }
          };
     } else if (item.type === 'post') {
-        // Instagram Post Logic
-        // In a real app, we'd fetch the specific post details again or pass them in
-        return { status: "processed", analysis: "Visual context extracted (Mock)" };
+        // Instagram Post Logic (Text Ingestion)
+         let textToProcess = "";
+         if (item.contentId) {
+             const dbItem = await prisma.contentItem.findUnique({ where: { id: item.contentId } });
+             if (dbItem?.description) textToProcess = dbItem.description;
+         }
+
+         if (!textToProcess) {
+             // Fallback or skip if no caption
+             return { status: "skipped", reason: "No caption content found" };
+         }
+
+         const processor = new TranscriptProcessor();
+         const personaAnalysis = await processor.process(textToProcess);
+
+         // Persist Brain Extraction
+         await prisma.personaProfile.upsert({
+             where: { creatorId },
+             create: {
+                 creatorId,
+                 tone: personaAnalysis.style.tone,
+                 keywords: personaAnalysis.style.keywords,
+                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
+             },
+             update: {
+                 tone: personaAnalysis.style.tone,
+                 keywords: personaAnalysis.style.keywords,
+                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
+             }
+         });
+
+        return { 
+            status: "processed", 
+            analysis: "Text context extracted",
+            style: personaAnalysis.style, // Return style so Queue updates 'transcript' field
+            artifacts: { text: textToProcess }
+        };
     }
 }
 
-
 export async function ingestionRoutes(fastify: FastifyInstance) {
+  // Step 0: List Scanned Content
+  fastify.get('/ingest/list', async (request, reply) => {
+    try {
+        let user;
+        try {
+             user = await (request as any).jwtVerify() as { id: string };
+        } catch (e) {
+             return reply.code(401).send({ error: "Unauthorized" });
+        }
+        
+        const items = await prisma.contentItem.findMany({
+            where: { creatorId: user.id },
+            orderBy: { publishedAt: 'desc' },
+            include: { comments: true } // Include comments to count them
+        });
+
+        const mappedItems = items.map(item => ({
+            id: item.id,
+            externalId: item.externalId,
+            title: item.title || "Untitled",
+            description: item.description,
+            thumbnail: item.thumbnail,
+            status: item.status,
+            url: item.platform === 'YOUTUBE' ? `https://youtube.com/watch?v=${item.externalId}` : item.imagePath,
+            type: item.platform === 'YOUTUBE' ? 'video' : 'post',
+            date: item.publishedAt?.toISOString() || new Date().toISOString(),
+            stats: {
+                comments: item.comments.length, // Simple count for now
+                // Views/Likes generally not stored unless we expanded schema, but we can return 0 or cached values if we added them.
+                // Schema update for stats wasn't done, only new fields for queue.
+                // Let's return "N/A" or "0" since we don't persist these dynamic stats yet.
+                views: "0", 
+                likes: "0"
+            }
+        }));
+
+        return { status: 'success', data: { items: mappedItems } };
+    } catch (e) {
+        console.error("[List Error]", e);
+        reply.code(500);
+        return { status: 'error', error: 'Failed to fetch items' };
+    }
+  });
+
   // Step 1: Discover
   fastify.post('/ingest/discover', async (request, reply) => {
     try {
@@ -188,10 +396,110 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
         const body = DiscoverySchema.omit({ creatorId: true }).parse(request.body);
         const result = await discoverContent(user.id, body.platform, body.authCode);
         return { status: 'success', data: result };
-    } catch (e) {
+    } catch (e: any) {
+        console.error("[Discovery Error]", e);
         reply.code(400); 
-        return { status: 'error', error: e };
+        return { 
+            status: 'error', 
+            error: e instanceof Error ? e.message : 'Unknown error',
+            details: e 
+        };
     }
+  });
+
+  // Step 3: Trigger Processing (Queue)
+  fastify.post('/ingest/queue/:id', async (request, reply) => {
+      try {
+        const { id } = z.object({ id: z.string() }).parse(request.params);
+        
+        // 1. Mark as PROCESSING
+        const item = await prisma.contentItem.update({
+            where: { id },
+            data: { status: 'PROCESSING' }
+        });
+        
+        // 2. Trigger Async Processing (Fire & Forget for MVP)
+        const type = item.platform === 'YOUTUBE' ? 'video' : 'post';
+        const url = item.platform === 'YOUTUBE' ? `https://youtube.com/watch?v=${item.externalId}` : (item.imagePath || item.externalId);
+        
+        parseContentItem(item.creatorId, { url: url!, type, contentId: item.id })
+            .then(async (res) => {
+                if (!res) return;
+                
+                let audioPath = null;
+                let transcript = null;
+                let segments = null;
+
+                // Check if this is the video result with artifacts
+                if ('artifacts' in res) {
+                     // @ts-ignore - TS might struggle with union inference here without explicit type
+                     audioPath = res.artifacts?.vocals;
+                     // @ts-ignore
+                     segments = res.artifacts?.segments;
+                     transcript = JSON.stringify(res.style);
+                }
+
+                await prisma.contentItem.update({
+                    where: { id },
+                    data: { 
+                        status: 'COMPLETED',
+                        audioPath: audioPath || undefined, 
+                        transcript: transcript || undefined,
+                        diarization: segments || undefined
+                    }
+                });
+                console.log(`[Queue] Completed ${id}`);
+            })
+            .catch(async (e) => {
+                console.error(`[Queue] Failed ${id}`, e);
+                await prisma.contentItem.update({
+                    where: { id },
+                    data: { status: 'FAILED' }
+                });
+            });
+
+        return { status: 'queued', item };
+      } catch (e) {
+          reply.code(400);
+          return { status: 'error', error: e };
+      }
+  });
+
+  // Step 4: Delete Item
+  fastify.delete('/ingest/item/:id', async (request, reply) => {
+      try {
+        let user;
+        try {
+             user = await (request as any).jwtVerify() as { id: string };
+        } catch (e) {
+             return reply.code(401).send({ error: "Unauthorized" });
+        }
+
+        const { id } = z.object({ id: z.string() }).parse(request.params);
+        
+        const item = await prisma.contentItem.findUnique({
+            where: { id }
+        });
+
+        if (!item) return reply.code(404).send({ error: "Not found" });
+        if (item.creatorId !== user.id) return reply.code(403).send({ error: "Forbidden" });
+        
+        // 1. Delete associated files from Storage
+        if (item.audioPath) {
+            await storageService.delete(item.audioPath);
+        }
+        
+        // 2. Delete from DB
+        await prisma.contentItem.delete({
+            where: { id }
+        });
+
+        return { status: 'success', id };
+      } catch (e) {
+          console.error("Delete failed", e);
+          reply.code(500); 
+          return { status: 'error', error: 'Failed to delete item' };
+      }
   });
 
   // Step 2: Parse (The Heavy Worker)
@@ -209,9 +517,11 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
         const item = { url: body.url, type: body.type };
         const result = await parseContentItem(user.id, item);
         return { status: 'success', data: result };
-    } catch (e) {
+    } catch (e: any) {
+        console.error("Parse Error", e);
+        const msg = e instanceof Error ? e.message : String(e);
         reply.code(400); 
-        return { status: 'error', error: e };
+        return { status: 'error', error: msg };
     }
   });
 
@@ -228,10 +538,72 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
         }
 
         const body = z.object({ url: z.string().url() }).parse(request.body);
-        const result = await parseContentItem(user.id, { url: body.url, type: 'video' });
-        return { status: 'success', data: result };
-      } catch (e) {
-          reply.code(400); return { status: 'error', error: e };
+        
+        // 1. Fetch Basic Metadata (Sync) for UI Feedback
+        // Improve: Use OAuth token if available to bypass Rate Limits on Metadata
+        const connection = await prisma.platformConnection.findFirst({
+            where: { creatorId: user.id, platform: 'YOUTUBE' }
+        });
+
+        const audio = new AudioService();
+        const meta = await audio.getVideoMetadata(body.url, connection?.accessToken || undefined, connection?.refreshToken || undefined);
+        
+        // Robust ID extraction
+        const videoId = body.url.match(/(?:v=|\/)([\w-]{11})(?:\?|&|\/|$)/)?.[1] || `link_${Date.now()}`;
+
+        // 2. Dedup Check
+        const existing = await prisma.contentItem.findFirst({
+             where: { externalId: videoId, platform: 'YOUTUBE', creatorId: user.id }
+        });
+
+        if (existing) {
+             return { status: 'exists', data: existing };
+        }
+
+        // 3. Create Record (Pending)
+        const item = await prisma.contentItem.create({
+            data: {
+                creatorId: user.id,
+                platform: 'YOUTUBE',
+                externalId: videoId,
+                title: meta.title || "Processing Link...",
+                description: meta.description || "",
+                status: 'PROCESSING',
+                publishedAt: new Date()
+            }
+        });
+
+        // 3. Trigger Async Processing (Fire & Forget)
+        parseContentItem(user.id, { url: body.url, type: 'video', contentId: item.id })
+            .then(async (res) => {
+                 if (!res) return;
+                 // @ts-ignore
+                 const audioPath = res.artifacts?.vocals;
+                 // @ts-ignore
+                 const segments = res.artifacts?.segments;
+                 const transcript = JSON.stringify(res.style);
+
+                 await prisma.contentItem.update({
+                     where: { id: item.id },
+                     data: { 
+                         status: 'COMPLETED',
+                         audioPath: audioPath || undefined,
+                         transcript: transcript || undefined,
+                         diarization: segments || undefined
+                     }
+                 });
+            })
+            .catch(async (e) => {
+                console.error(`[QuickLink] Parse Failed`, e);
+                await prisma.contentItem.update({ where: { id: item.id }, data: { status: 'FAILED' }});
+            });
+
+        return { status: 'queued', data: item };
+      } catch (e: any) {
+          console.error("QuickLink Error", e);
+          const msg = e instanceof Error ? e.message : String(e);
+          reply.code(400); 
+          return { status: 'error', error: msg };
       }
   });
 }

@@ -28,6 +28,10 @@ model Creator {
 
   // Ingested Data
   contents ContentItem[]
+
+  // Voice Enrollment (Golden Sample)
+  voiceSample String? // Path to local file
+  voiceStatus String? @default("MISSING") // MISSING, ENROLLED
 }
 
 model PlatformConnection {
@@ -77,6 +81,11 @@ model ContentItem {
   // For IG
   imagePath   String?
   caption     String?
+  
+  // New Fields for Queue & UI
+  thumbnail   String?
+  status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  diarization Json?
 
   // Engagement
   comments    Comment[]

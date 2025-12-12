@@ -64,8 +64,8 @@ graph TD
 
 *   **Phase 1: The "Digital Twin" Factory (Tier 1 Focus)**
     *   🎯 **Goal**: Creator links YouTube -> We extract Text Personality + **Instant Voice Clone** (Embedding).
-    *   🛠 **Tech**: DeepSeek (Brain), Higgs Audio V2 (Instant Voice), Supabase.
-    *   🚧 **Challenge**: Audio clean-up/diarization (separating creator voice from guests).
+    *   🛠 **Tech**: DeepSeek (Brain), Higgs Audio V2 (Instant Voice), Supabase, **Python Worker (Demucs/Pyannote)**.
+    *   ✅ **Status**: Audio clean-up/diarization mechanism implemented via `apps/worker` (Demucs + Pyannote).
 
 * 3.  **Pipeline Flow (official APIs)**:
     1.  **Auth**: Creator logs in with Google/Meta.

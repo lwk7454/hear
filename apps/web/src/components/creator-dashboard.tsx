@@ -1,31 +1,89 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { toast } from "sonner"
 
 export function CreatorDashboard() {
-  const [url, setUrl] = useState('')
   const [status, setStatus] = useState<'idle' | 'processing' | 'ready'>('idle')
-  const [persona, setPersona] = useState<any>(null)
-  
+  const [url, setUrl] = useState('')
+  const [videos, setVideos] = useState<any[]>([])
+  const [isEnrolled, setIsEnrolled] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const searchParams = useSearchParams()
   const router = useRouter()
+
+  const refreshVideos = () => {
+    fetch('http://localhost:8000/ingest/list', { credentials: 'include' })
+        .then(r => r.json())
+        .then(json => {
+            if (json.status === 'success') {
+                // Sort by date desc if needed, or rely on backend
+                setVideos(json.data.items || []);
+            }
+        })
+        .catch(e => console.error("Failed to load items", e));
+  }
   
-  // Check Session
+  // Check Session & Fetch Data
   useEffect(() => {
     fetch('http://localhost:8000/auth/me', { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
             if (!data.authenticated) {
                 window.location.href = '/login';
+            } else {
+                // Fetch existing videos
+                refreshVideos();
+                
+                // Fetch Voice Status
+                fetch('http://localhost:8000/voice/status', { credentials: 'include' })
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.status === 'success' && json.enrolled) {
+                            setIsEnrolled(true);
+                        }
+                    })
+                    .catch(e => console.error("Failed to voice status", e));
             }
         })
         .catch(() => window.location.href = '/login');
   }, []);
+
+  const handleVoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files?.[0]) return;
+      
+      const file = e.target.files[0];
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+          // Optimistic
+          setStatus('processing');
+          const res = await fetch('http://localhost:8000/voice/enroll', {
+              method: 'POST',
+              credentials: 'include',
+              body: formData // No Content-Type header, browser sets it with boundary
+          });
+          const json = await res.json();
+          if (json.status === 'success') {
+              setIsEnrolled(true);
+              toast.success("Voice Enrolled Successfully!");
+          } else {
+              toast.error("Failed: " + json.error);
+          }
+      } catch (e) {
+          console.error(e);
+          toast.error("Error uploading voice");
+      } finally {
+          setStatus('idle');
+      }
+  }
 
   // Handle OAuth Callback Success
   useEffect(() => {
@@ -45,29 +103,8 @@ export function CreatorDashboard() {
         .then(res => res.json())
         .then(json => {
             if (json.status === 'success') {
-                // Merge data
-                if (connected === 'instagram') {
-                     setPersona((prev: any) => ({ 
-                        ...prev, 
-                        ig: {
-                            source: "Instagram",
-                            postsScanned: json.data.items.length,
-                            style: { style: "Connected & Scanned" }
-                        }
-                    }))
-                } else if (connected === 'youtube') {
-                    // Just show a success state or similar
-                     setPersona((prev: any) => ({ 
-                        ...prev, 
-                        yt: {
-                            source: "YouTube",
-                            videosScanned: json.data.items.length,
-                            style: { style: "Connected & Scanned" }
-                        }
-                    }))
-                }
+                setVideos(json.data.items || [])
                 setStatus('ready')
-                // Clean URL
                 router.replace('/creator')
             }
         })
@@ -77,6 +114,21 @@ export function CreatorDashboard() {
         })
     }
   }, [searchParams, router])
+
+  const handleQueueParams = async (id: string) => {
+      // Optimistic Update
+      setVideos((prev: any[]) => prev.map((v: any) => v.id === id ? { ...v, status: 'PROCESSING' } : v))
+      
+      try {
+          await fetch(`http://localhost:8000/ingest/queue/${id}`, { method: 'POST', credentials: 'include' });
+          // Poll or wait for websocket in future. For now, just set to COMPLETED after a timeout? 
+          // Actually, let's keep it processing until reload or polling impl.
+          // Triggering a re-fetch of the list would be ideal but lightweight for now.
+      } catch (e) {
+          console.error(e);
+          setVideos((prev: any[]) => prev.map((v: any) => v.id === id ? { ...v, status: 'FAILED' } : v))
+      }
+  }
 
   const handleIngest = async () => {
     setStatus('processing')
@@ -90,16 +142,34 @@ export function CreatorDashboard() {
       })
       const json = await res.json()
       
-      if (json.status === 'success') {
-        setPersona(json.data)
+      if (['success', 'queued', 'exists'].includes(json.status)) {
+        if (json.status === 'exists') {
+             toast.info("This video is already in your library.");
+        } else {
+             refreshVideos();
+             toast.success("Video added to queue!");
+        }
+        setUrl('');
         setStatus('ready')
       } else {
-        throw new Error(json.error)
+        const errMsg = typeof json.error === 'object' ? JSON.stringify(json.error) : json.error;
+        throw new Error(errMsg || "Unknown error")
       }
     } catch (e) {
       console.error(e)
       setStatus('idle')
     }
+  }
+
+  const handleDelete = async (id: string) => {
+      if (!confirm("Are you sure? This will delete all data for this item.")) return;
+       setVideos(prev => prev.filter(v => v.id !== id));
+       try {
+           const res = await fetch(`http://localhost:8000/ingest/item/${id}`, { method: 'DELETE', credentials: 'include' });
+           if (!res.ok) throw new Error("Delete failed");
+       } catch (e) {
+           console.error(e);
+       }
   }
 
   return (
@@ -120,156 +190,149 @@ export function CreatorDashboard() {
       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-            <Tabs defaultValue="link" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="link">Quick Link (YouTube)</TabsTrigger>
-                    <TabsTrigger value="oauth">Authorized Connect (Deep Scan)</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="link">
-                    <Card>
-                    <CardHeader>
-                        <CardTitle>Single Video Ingest</CardTitle>
-                        <CardDescription>Paste a YouTube link for a quick persona extraction.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <Input 
-                            placeholder="https://youtube.com/watch?v=..." 
-                            value={url}
-                            onChange={(e) => setUrl(e.target.value)}
-                        />
-                        <Button 
-                            onClick={handleIngest} 
-                            disabled={status === 'processing' || !url}
-                            className="w-full"
-                        >
-                        {status === 'processing' ? 'Analyzing...' : 'Ingest Video'}
-                        </Button>
-                    </CardContent>
-                    </Card>
-                </TabsContent>
+        <div className="lg:col-span-1 space-y-4">
+             {/* Voice Identity Card */}
+             <Card>
+                <CardHeader>
+                    <CardTitle>Voice Identity</CardTitle>
+                    <CardDescription>Enroll your "Golden Sample" for voice cloning.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${isEnrolled ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                        <span className="text-sm font-medium">{isEnrolled ? "Voice Enrolled" : "Not Enrolled"}</span>
+                    </div>
+                    
+                    {!isEnrolled && (
+                        <p className="text-xs text-muted-foreground">
+                            Upload a 10s recording of your voice to filter ingested content.
+                        </p>
+                    )}
 
-                <TabsContent value="oauth">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Platform Connections</CardTitle>
-                            <CardDescription>Connect accounts for a deep repository scan.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <Button variant="outline" className="w-full justify-start gap-2" 
-                                onClick={async () => {
-                                    // Use Session
-                                    const res = await fetch('http://localhost:8000/auth/youtube/url', { method: 'GET', headers: { 'Accept': 'application/json' } , credentials: 'include' });
-                                    if (res.status === 401) {
-                                         window.location.href = '/login';
-                                         return;
-                                    }
-                                    const { url } = await res.json();
-                                    window.location.href = url;
-                                }}
-                            >
-                                <img src="/assets/youtube.svg" className="w-5 h-5" alt="YT"/>
-                                Connect YouTube
-                            </Button>
-                            <Button 
-                                variant="outline" 
-                                className="w-full justify-start gap-2"
-                                onClick={async () => {
-                                    const res = await fetch('http://localhost:8000/auth/instagram/url', { method: 'GET', credentials: 'include' });
-                                     if (res.status === 401) {
-                                         window.location.href = '/login';
-                                         return;
-                                    }
-                                    const { url } = await res.json();
-                                    window.location.href = url;
-                                }}
-                            >
-                                <img src="/assets/instagram.svg" className="w-5 h-5" alt="IG"/>
-                                Connect Instagram
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-            </Tabs>
+                    <div className="grid w-full max-w-sm items-center gap-1.5">
+                        <Input 
+                            ref={fileInputRef}
+                            type="file" 
+                            accept="audio/*" 
+                            onChange={handleVoiceUpload}
+                            disabled={status === 'processing'}
+                        />
+                    </div>
+                </CardContent>
+             </Card>
+
+             {/* Connection Card */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Connections</CardTitle>
+                    <CardDescription>Connect platforms to scan.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <Button variant="outline" className="w-full justify-start gap-2" 
+                        onClick={async () => {
+                            const res = await fetch('http://localhost:8000/auth/youtube/url', { method: 'GET', headers: { 'Accept': 'application/json' } , credentials: 'include' });
+                            if (res.status === 401) { window.location.href = '/login'; return; }
+                            const { url } = await res.json();
+                            window.location.href = url;
+                        }}
+                    >
+                        <img src="/assets/youtube.svg" className="w-5 h-5" alt="YT"/>
+                        Connect YouTube
+                    </Button>
+                     <Button 
+                        variant="outline" 
+                        className="w-full justify-start gap-2"
+                        onClick={async () => {
+                            const res = await fetch('http://localhost:8000/auth/instagram/url', { method: 'GET', credentials: 'include' });
+                                if (res.status === 401) {
+                                    window.location.href = '/login';
+                                    return;
+                                }
+                            const { url } = await res.json();
+                            window.location.href = url;
+                        }}
+                    >
+                        <img src="/assets/instagram.svg" className="w-5 h-5" alt="IG"/>
+                        Connect Instagram
+                    </Button>
+                </CardContent>
+            </Card>
+
+             {/* Manual Link Card */}
+             <Card>
+                <CardHeader>
+                     <CardTitle>Quick Link</CardTitle>
+                     <CardDescription>Ingest single video URL</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                     <Input placeholder="https://youtube.com/..." value={url} onChange={(e) => setUrl(e.target.value)} />
+                     <Button onClick={handleIngest} disabled={status === 'processing'} className="w-full">Ingest</Button>
+                </CardContent>
+             </Card>
         </div>
 
-        <Card className="bg-muted/30">
-          <CardHeader>
-            <CardTitle>Twin Status</CardTitle>
-            <CardDescription>Current capabilities.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {status === 'idle' && (
-                <div className="flex items-center justify-center h-48 text-muted-foreground text-sm border-2 border-dashed rounded-lg">
-                    No active persona
-                </div>
-            )}
-            {status === 'processing' && (
-                <div className="flex flex-col items-center justify-center h-48 space-y-4">
+        <div className="lg:col-span-2 space-y-6">
+            <h3 className="text-xl font-semibold">Library ({videos.length})</h3>
+            
+            {status === 'processing' && videos.length === 0 && (
+                 <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center">
                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                    <div className="text-sm text-muted-foreground animate-pulse">Running DeepSeek Processor...</div>
-                </div>
+                    <p className="text-muted-foreground">Scanning repository...</p>
+                 </div>
             )}
-            {status === 'ready' && persona && (
-                <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-2">
-                    {/* Brain Section */}
-                    {persona.style && (
-                        <div>
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Brain (DeepSeek)</span>
-                                <span className="px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 text-[10px] font-medium">Active</span>
-                            </div>
-                            <div className="text-sm font-medium">{persona.style.tone}</div>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                                {persona.style.keywords?.map((k: string) => (
-                                    <span key={k} className="px-2 py-0.5 bg-background border rounded text-xs text-muted-foreground">#{k}</span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
 
-                    {/* Voice Section */}
-                    {persona.voice && (
-                        <div>
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Voice Model</span>
-                                <span className="px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-600 text-[10px] font-medium">
-                                    {persona.voice.tier}
-                                </span>
-                            </div>
-                            <div className="text-xs text-muted-foreground space-y-1">
-                                <div className="flex justify-between">
-                                    <span>Status</span>
-                                    <span className="font-mono text-foreground">{persona.voice.status}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span>Voice ID</span>
-                                    <span className="font-mono text-foreground">{persona.voice.voiceId}</span>
-                                </div>
-                            </div>
-                            <div className="mt-3">
-                                <audio controls className="w-full h-8" src={`http://localhost:8000/audio/${persona.voice.sample}`} />
+            <div className="grid gap-4">
+                {videos.map((video) => (
+                    <Card key={video.id} className="overflow-hidden flex flex-col sm:flex-row">
+                        <div className="sm:w-48 h-32 bg-muted relative shrink-0">
+                            {video.thumbnail ? (
+                                <img src={video.thumbnail} className="w-full h-full object-cover" alt={video.title}/>
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-muted-foreground">No Thumb</div>
+                            )}
+                            <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
+                                {video.type}
                             </div>
                         </div>
-                    )}
-
-                    {/* Instagram Section (if connected) */}
-                    {persona.ig && (
-                        <div>
-                             <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Engagement</span>
-                            </div>
-                            <div className="p-3 bg-background rounded-md border text-xs">
-                                <div className="font-semibold mb-1">{persona.ig.style.style}</div>
-                                <div className="text-muted-foreground">Scanned {persona.ig.postsScanned} posts</div>
-                            </div>
+                        <div className="p-4 flex flex-col justify-between flex-1">
+                             <div>
+                                 <h4 className="font-semibold line-clamp-1" title={video.title}>{video.title}</h4>
+                                 <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{video.description}</div>
+                                 <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+                                     <span>👁 {parseInt(video.stats?.views || "0").toLocaleString()}</span>
+                                     <span>👍 {parseInt(video.stats?.likes || "0").toLocaleString()}</span>
+                                     <span>💬 {video.stats?.comments || 0} interactions</span>
+                                 </div>
+                             </div>
+                             <div className="mt-4 flex items-center justify-between">
+                                 <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${
+                                     video.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                     video.status === 'PROCESSING' ? 'bg-blue-100 text-blue-700' :
+                                     'bg-gray-100 text-gray-500'
+                                 }`}>
+                                     {video.status || 'PENDING'}
+                                 </span>
+                                 
+                                 <div className="flex gap-2">
+                                     {video.status !== 'COMPLETED' && video.status !== 'PROCESSING' && (
+                                         <Button size="sm" onClick={() => handleQueueParams(video.id)}>Ingest</Button>
+                                     )}
+                                     <Button size="sm" variant="destructive" onClick={() => handleDelete(video.id)}>
+                                         Delete
+                                     </Button>
+                                 </div>
+                             </div>
                         </div>
-                    )}
-                </div>
-            )}
-          </CardContent>
-        </Card>
+                    </Card>
+                ))}
+                
+                {videos.length === 0 && status === 'ready' && (
+                    <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
+                        No videos found. Try connecting your account.
+                    </div>
+                )}
+            </div>
+        </div>
       </div>
     </div>
   )

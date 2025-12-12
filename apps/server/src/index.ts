@@ -1,12 +1,15 @@
 import 'dotenv/config'
 import Fastify, { FastifyInstance } from 'fastify'
 import { authRoutes } from './routes/auth'
+import { storageService } from './services/storage'
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import jwt from '@fastify/jwt'
 import cookie from '@fastify/cookie'
+import fastifyMultipart from '@fastify/multipart'
 import { MoshiClient } from './moshi-client'
 import { ingestionRoutes } from './ingestion'
+import { voiceRoutes } from './routes/voice'
 
 const server: FastifyInstance = Fastify({
   logger: true
@@ -23,7 +26,20 @@ server.get('/health', async () => {
 const start = async () => {
   try {
     // 1. Register Plugins
-    await server.register(cors, { origin: true, credentials: true }) // Enable cookies
+    const allowedOrigins = process.env.CORS_ORIGINS 
+        ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+        : [
+            'http://localhost:3000', 
+            'http://127.0.0.1:3000',
+            'http://localhost:3001',
+            'http://127.0.0.1:3001'
+          ];
+          
+    await server.register(cors, { 
+      origin: allowedOrigins,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    }) // Enable cookies
     await server.register(websocket)
     
     server.register(jwt, {
@@ -41,6 +57,7 @@ const start = async () => {
     // 2. Register Routes
     server.register(authRoutes)
     server.register(ingestionRoutes)
+    server.register(voiceRoutes)
 
     // 3. Register WebSocket Endpoint
     server.register(async function (fastify) {
@@ -67,7 +84,9 @@ const start = async () => {
       })
     })
 
+
     // 4. Start Server
+    await storageService.ensureBucket();
     await server.listen({ port: 8000, host: '0.0.0.0' })
     console.log('Server listening on http://localhost:8000')
   } catch (err) {

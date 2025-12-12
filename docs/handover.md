@@ -17,7 +17,8 @@ The technical stack is built entirely on Node.js/TypeScript.
 *   **Backend**: `apps/server` (Fastify, Node.js).
 *   **AI/Logic**: `LangChain.js` (Use **DeepSeek** or **Qwen** adapters, NOT OpenAI).
 *   **Ingestion**: `googleapis` (YouTube Data API).
-*   **Voice Training**: Requirement identified for **Moshi Fine-Tuning** (Python/PyTorch) to capture raw audio style.
+*   **Audio Processing**: `apps/worker` (Python 3.11/FastAPI) handles **Demucs** (Vocals) and **Pyannote** (Diarization).
+*   **Voice Training**: Requirement identified for **Moshi Fine-Tuning**, using `apps/worker` or cloud GPU.
 
 ## 3. Current Implementation Status
 
@@ -26,9 +27,9 @@ The technical stack is built entirely on Node.js/TypeScript.
     *   URL: `/creator` (in `apps/web`).
     *   State: **Updated**. Features "Quick Link" (YouTube) and "Authorized Connect" (Instagram). Displays Voice Tier and Engagement Style.
 *   **Ingestion Endpoint**:
-    *   Route: `POST /ingest/discover` & `POST /ingest/parse`.
-    *   State: **Refactored**. 2-Step process (Discovery vs Parsing).
-    *   Current Behavior: Discovery lists items; Parser does the heavy lifting (Voice/Text/Engagement).
+    *   Route: `POST /ingest/parse` triggers `apps/worker`.
+    *   State: **Complete**. `AudioService` downloads via `yt-dlp`. Worker handles Separation/Diarization via GPU.
+    *   **Data**: Vocals uploaded to Supabase; Diarization segments stored in `ContentItem.diarization`.
 
 ### Consumer-Side (`apps/app`) - NEW
 *   **End-User App**:
@@ -77,6 +78,12 @@ pnpm dev
 cd apps/web && pnpm dev    # Creator Dashboard: http://localhost:3000
 cd apps/server && pnpm dev # Backend: http://localhost:8000
 cd apps/app && pnpm dev    # End-User App: http://localhost:3001
+
+# Start Python Worker (New Terminal)
+cd apps/worker
+source venv/bin/activate   # (Mac/Linux)
+# .\venv\Scripts\Activate  # (Windows)
+python main.py             # Worker: http://localhost:8001
 ```
 
 ### Build
@@ -99,6 +106,7 @@ The platform now has a **two-app architecture**:
 | `apps/web` | Creator Dashboard | Creators | Next.js 15 | Active |
 | `apps/app` | Consumer Experience | Fans | Next.js 16 PWA | Scaffolded |
 | `apps/server` | API + Orchestration | Both | Fastify | Active |
+| `apps/worker` | AI Processing | Backend | Python 3.11 | Active |
 
 **Voice Tiers**:
 - **Tier 1**: Async voice messages (Higgs TTS)
