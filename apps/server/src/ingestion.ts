@@ -140,8 +140,8 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
                         externalId: videoId,
                         title: v.snippet?.title || "Untitled",
                         description: description,
-                        thumbnail: v.snippet?.thumbnails?.medium?.url,
-                        publishedAt: v.snippet?.publishedAt ? new Date(v.snippet.publishedAt) : undefined,
+                        thumbnail: v.snippet?.thumbnails?.medium?.url || null,
+                        publishedAt: v.snippet?.publishedAt ? new Date(v.snippet.publishedAt) : null,
                         status: 'PENDING'
                     }
                 })
@@ -193,7 +193,7 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
                      title: p.caption ? p.caption.substring(0, 50) + "..." : "Untitled Post",
                      description: p.caption || "",
                      imagePath: p.media_url,
-                     publishedAt: p.timestamp ? new Date(p.timestamp) : undefined,
+                     publishedAt: p.timestamp ? new Date(p.timestamp) : null,
                  };
 
                  let dbItem;
@@ -238,6 +238,12 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
     console.log(`[Parser] Processing ${item.type} from ${item.url}...`);
 
     if (item.type === 'video') {
+         // 0. Enforce Voice Enrollment
+         const creator = await prisma.creator.findUnique({ where: { id: creatorId } });
+         if (!creator || creator.voiceStatus !== 'ENROLLED' || !creator.voiceSample) {
+             throw new Error("Voice enrollment required before ingesting video content.");
+         }
+
          // 1. Text & Audio Pipeline
          const audio = new AudioService();
          
@@ -273,7 +279,7 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
          
          const cleaner = new AudioCleaner();
          // Offload to GPU Worker
-         const { vocalsUrl, segments } = await cleaner.process(rawUrl, creatorId);
+         const { vocalsUrl, segments } = await cleaner.process(rawUrl, creatorId, creator.voiceSample);
          
          // For MVP Split Arch: Use full vocals as sample
          const sampleUrl = vocalsUrl; 
@@ -443,9 +449,9 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
                     where: { id },
                     data: { 
                         status: 'COMPLETED',
-                        audioPath: audioPath || undefined, 
-                        transcript: transcript || undefined,
-                        diarization: segments || undefined
+                        audioPath: audioPath || null, 
+                        transcript: transcript || null,
+                        diarization: segments || null
                     }
                 });
                 console.log(`[Queue] Completed ${id}`);
@@ -568,6 +574,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
                 externalId: videoId,
                 title: meta.title || "Processing Link...",
                 description: meta.description || "",
+                thumbnail: meta.thumbnail || null,
                 status: 'PROCESSING',
                 publishedAt: new Date()
             }
@@ -587,9 +594,9 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
                      where: { id: item.id },
                      data: { 
                          status: 'COMPLETED',
-                         audioPath: audioPath || undefined,
-                         transcript: transcript || undefined,
-                         diarization: segments || undefined
+                         audioPath: audioPath || null,
+                         transcript: transcript || null,
+                         diarization: segments || null
                      }
                  });
             })

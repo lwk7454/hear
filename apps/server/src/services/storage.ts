@@ -18,25 +18,31 @@ export class StorageService {
 
     /**
      * Uploads a file to Supabase Storage
-     * @param filePath Local path to the file
+     * @param file Local path (string) OR Buffer OR Stream
      * @param destinationPath Path in the bucket (e.g., 'users/123/golden.wav')
+     * @param mimeType Optional mime type (required if file is not a path)
      * @returns Public URL of the uploaded file
      */
-    async upload(filePath: string, destinationPath: string): Promise<string> {
+    async upload(file: string | Buffer | NodeJS.ReadableStream, destinationPath: string, mimeType?: string): Promise<string> {
         try {
-            const fileContent = fs.readFileSync(filePath) 
-            
-            // Auto-detect mime type mostly for audio
-            let contentType = 'application/octet-stream'
-            if (filePath.endsWith('.wav')) contentType = 'audio/wav'
-            else if (filePath.endsWith('.mp3')) contentType = 'audio/mpeg'
+            let fileContent: string | Buffer | NodeJS.ReadableStream = file
+            let contentType = mimeType || 'application/octet-stream'
+
+            if (typeof file === 'string') {
+                fileContent = fs.readFileSync(file)
+                if (!mimeType) {
+                    if (file.endsWith('.wav')) contentType = 'audio/wav'
+                    else if (file.endsWith('.mp3')) contentType = 'audio/mpeg'
+                }
+            }
 
             const { data, error } = await this.supabase
                 .storage
                 .from(this.bucket)
                 .upload(destinationPath, fileContent, {
                     contentType,
-                    upsert: true
+                    upsert: true,
+                    duplex: 'half' // Required for Node streams
                 })
 
             if (error) {
@@ -65,9 +71,9 @@ export class StorageService {
             // URL format: .../storage/v1/object/public/bucket/path/to/file
             // or just ensure we get the part after bucket name
             const parts = publicUrl.split(`/${this.bucket}/`);
-            if (parts.length < 2) return;
+            if (parts.length < 2 || !parts[1]) return;
             
-            const path = parts[1];
+            const path: string = parts[1];
 
             const { error } = await this.supabase
                 .storage

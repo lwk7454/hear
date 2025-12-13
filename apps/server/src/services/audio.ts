@@ -66,7 +66,7 @@ export class AudioService {
       return url.match(/(?:v=|\/)([\w-]{11})(?:\?|&|\/|$)/)?.[1] || null;
   }
 
-  async getVideoMetadata(url: string, accessToken?: string, refreshToken?: string): Promise<{ title: string; description: string; language: string }> {
+  async getVideoMetadata(url: string, accessToken?: string, refreshToken?: string): Promise<{ title: string; description: string; language: string; thumbnail?: string | undefined }> {
       console.log(`[AudioService] Fetching metadata for ${url}...`);
       
       // 1. Try API if token provided
@@ -76,7 +76,7 @@ export class AudioService {
               try {
                   console.log("[AudioService] Using Data API for metadata...");
                   // Dynamic import to avoid circular dependency issues if any (though unlikely here)
-                  // Actually standard import is fine if structure is flat. 
+                  // @ts-ignore
                   const { YouTubeService } = await import('./youtube'); 
                   const yt = new YouTubeService(accessToken, refreshToken);
                   const details = await yt.getVideoDetails(videoId);
@@ -84,7 +84,8 @@ export class AudioService {
                       return {
                           title: details.snippet.title || "",
                           description: details.snippet.description || "",
-                          language: details.snippet.defaultLanguage || details.snippet.defaultAudioLanguage || "en"
+                          language: details.snippet.defaultLanguage || details.snippet.defaultAudioLanguage || "en",
+                          thumbnail: details.snippet.thumbnails?.high?.url || details.snippet.thumbnails?.medium?.url || details.snippet.thumbnails?.default?.url
                       };
                   }
               } catch (e) {
@@ -101,7 +102,8 @@ export class AudioService {
           return {
               title: data.title || "",
               description: data.description || "",
-              language: data.language || data.original_language || "en" // Try multiple fields, fallback default
+              language: data.language || data.original_language || "en", // Try multiple fields, fallback default
+              thumbnail: data.thumbnail || (data.thumbnails && data.thumbnails.length > 0 ? data.thumbnails[data.thumbnails.length - 1].url : undefined)
           };
       } catch (e) {
           console.error("[AudioService] Metadata fetch failed", e);

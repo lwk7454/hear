@@ -33,16 +33,10 @@ export async function voiceRoutes(fastify: FastifyInstance) {
             }
 
             const filename = `${user.id}_golden.wav`; // Normalize to one file per user for now
-            const savePath = path.join(VOICE_STORAGE_DIR, filename);
-
-            await pipeline(data.file, fs.createWriteStream(savePath));
-
-            // Upload to Supabase
-            const publicUrl = await storageService.upload(savePath, `voice_samples/${filename}`);
             
-            // Clean up local file? Keep it as cache for now if needed, or delete. 
-            // In Prod/Lambda, we MUST delete or let it expire.
-            // Let's keep it for now as "cache" since we are in local dev mostly.
+            // Upload to Supabase directly (Stream)
+            // Note: We assume mp3/wav based on mimetype or filename, but let's trust mimetype
+            const publicUrl = await storageService.upload(data.file, `voice_samples/${filename}`, data.mimetype);
 
             // Update DB
             await prisma.creator.update({

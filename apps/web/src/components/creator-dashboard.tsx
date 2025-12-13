@@ -229,6 +229,7 @@ export function CreatorDashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <Button variant="outline" className="w-full justify-start gap-2" 
+                        disabled={!isEnrolled}
                         onClick={async () => {
                             const res = await fetch('http://localhost:8000/auth/youtube/url', { method: 'GET', headers: { 'Accept': 'application/json' } , credentials: 'include' });
                             if (res.status === 401) { window.location.href = '/login'; return; }
@@ -239,9 +240,10 @@ export function CreatorDashboard() {
                         <img src="/assets/youtube.svg" className="w-5 h-5" alt="YT"/>
                         Connect YouTube
                     </Button>
-                     <Button 
+                    <Button 
                         variant="outline" 
                         className="w-full justify-start gap-2"
+                        disabled={!isEnrolled}
                         onClick={async () => {
                             const res = await fetch('http://localhost:8000/auth/instagram/url', { method: 'GET', credentials: 'include' });
                                 if (res.status === 401) {
@@ -265,8 +267,8 @@ export function CreatorDashboard() {
                      <CardDescription>Ingest single video URL</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                     <Input placeholder="https://youtube.com/..." value={url} onChange={(e) => setUrl(e.target.value)} />
-                     <Button onClick={handleIngest} disabled={status === 'processing'} className="w-full">Ingest</Button>
+                     <Input placeholder="https://youtube.com/..." value={url} onChange={(e) => setUrl(e.target.value)} disabled={!isEnrolled} />
+                     <Button onClick={handleIngest} disabled={status === 'processing' || !isEnrolled} className="w-full">Ingest</Button>
                 </CardContent>
              </Card>
         </div>

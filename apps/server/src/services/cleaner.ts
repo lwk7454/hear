@@ -22,7 +22,7 @@ export class AudioCleaner {
    * Input: Public URL of raw audio.
    * Output: Public URL of vocals + Diarization segments.
    */
-  async process(audioUrl: string, creatorId: string): Promise<{ vocalsUrl: string, segments: any[] }> {
+  async process(audioUrl: string, creatorId: string, voiceSampleUrl?: string): Promise<{ vocalsUrl: string, segments: any[] }> {
     console.log(`[AudioCleaner] Calling GPU Worker at ${this.workerUrl} for ${audioUrl}...`);
 
     try {
@@ -31,7 +31,8 @@ export class AudioCleaner {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 audio_url: audioUrl,
-                creator_id: creatorId
+                creator_id: creatorId,
+                voice_sample_url: voiceSampleUrl
             })
         });
 

@@ -3,7 +3,13 @@ import shutil
 import subprocess
 import requests
 import json
+import json
+import numpy as np
+import torch
+import torchaudio
+from scipy.spatial.distance import cosine
 from pathlib import Path
+from pyannote.audio import Inference
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -37,6 +43,7 @@ else:
 class ProcessRequest(BaseModel):
     audio_url: str
     creator_id: str
+    voice_sample_url: Optional[str] = None
 
 @app.get("/")
 def read_root():
@@ -123,12 +130,122 @@ def process_audio(req: ProcessRequest):
             print("    Skipping Diarization (No HF_TOKEN). Using default segment.")
             segments = [{"start": 0, "end": 30, "speaker": "SPEAKER_00"}]
 
+        if req.voice_sample_url and HF_TOKEN:
+            print(f"    Filtering for enrolled voice...")
+            # 1. Download Golden Sample
+            golden_path = work_dir / "golden.wav"
+            with requests.get(req.voice_sample_url, stream=True) as r:
+                 r.raise_for_status()
+                 with open(golden_path, 'wb') as f:
+                     for chunk in r.iter_content(chunk_size=8192):
+                         f.write(chunk)
+            
+            # 2. Compute Golden Embedding
+            # Load Inference Model
+            inference = Inference("pyannote/embedding", use_auth_token=HF_TOKEN)
+            inference.to(device)
+            
+            emb_golden = inference(golden_path)
+            
+            # 3. Compute Embeddings for each Diarized Speaker
+            # Concatenate all segments for a speaker to get a robust embedding
+            speaker_turns = {}
+            waveform, sample_rate = torchaudio.load(vocals_path)
+            
+            for seg in segments:
+                spk = seg['speaker']
+                start = seg['start']
+                end = seg['end']
+                if spk not in speaker_turns:
+                    speaker_turns[spk] = []
+                speaker_turns[spk].append((start, end))
+                
+            closest_speaker = None
+            min_dist = 1.0
+            
+            for spk, turns in speaker_turns.items():
+                # Extract up to 30s of speech for embedding
+                max_dur = 30.0
+                curr_dur = 0.0
+                spk_audio = []
+                
+                for start, end in turns:
+                    if curr_dur >= max_dur: break
+                    dur = end - start
+                    take = min(dur, max_dur - curr_dur)
+                    
+                    frame_start = int(start * sample_rate)
+                    frame_num = int(take * sample_rate)
+                    
+                    # Extract channel 0
+                    chunk = waveform[0, frame_start:frame_start+frame_num]
+                    spk_audio.append(chunk)
+                    curr_dur += take
+                    
+                if not spk_audio: continue
+                
+                # Concat and save temp file for inference
+                full_spk_audio = torch.cat(spk_audio)
+                # Reshape to (1, samples)
+                full_spk_audio = full_spk_audio.unsqueeze(0)
+                
+                spk_wav_path = work_dir / f"{spk}.wav"
+                torchaudio.save(spk_wav_path, full_spk_audio, sample_rate)
+                
+                # Compute Embedding
+                emb_spk = inference(spk_wav_path)
+                
+                # Compare
+                dist = cosine(emb_golden, emb_spk)
+                print(f"    Distance to {spk}: {dist:.4f}")
+                
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_speaker = spk
+            
+            target_speaker = closest_speaker
+            print(f"    Target Speaker Identified: {target_speaker} (dist: {min_dist:.4f})")
+            
+            # 4. Filter Audio
+            if target_speaker and target_speaker in speaker_turns:
+                # Construct new audio with SILENCE for non-target parts
+                # Initialize silence
+                filtered_waveform = torch.zeros_like(waveform)
+                
+                for seg in segments:
+                    if seg['speaker'] == target_speaker:
+                        start = int(seg['start'] * sample_rate)
+                        end = int(seg['end'] * sample_rate)
+                        # Copy original audio for this segment
+                        filtered_waveform[:, start:end] = waveform[:, start:end]
+                
+                filtered_path = work_dir / "filtered_vocals.wav"
+                torchaudio.save(filtered_path, filtered_waveform, sample_rate)
+                
+                # Swap output path
+                vocals_path = filtered_path
+                # Update segments list to only show target? Or keep all but mark them?
+                # User request: "Vocal audio file it's the original" -> they want the filtered file.
+                # So we update vocals_path which is uploaded next.
+                
+                # Also filter returned segments metadata
+                segments = [s for s in segments if s['speaker'] == target_speaker]
+
         # D. UPLOAD ARTIFACTS
         vocals_url = req.audio_url # Fallback
         if supabase:
             print(f"    Uploading results...")
-            ts = int(os.path.getmtime(vocals_path))
-            dest_path = f"ingest/{req.creator_id}/{ts}_vocals.wav"
+            
+            # Better Naming
+            # ingest/{creator_id}/{source_id}/{stage}.wav
+            # Source ID hard to get from URL safely, let's look at filename in future
+            # For now use timestamp + clear suffixes
+            import time
+            ts = int(time.time())
+            
+            # Extract filename from URL if possible or use random
+            filename_base = Path(req.audio_url).stem[:20] # truncate
+            dest_path = f"ingest/{req.creator_id}/processed/{ts}_{filename_base}_vocals.wav"
             
             with open(vocals_path, 'rb') as f:
                 file_bytes = f.read()
@@ -141,11 +258,7 @@ def process_audio(req: ProcessRequest):
             
             # Get Public URL
             res = supabase.storage.from_("audio").get_public_url(dest_path)
-            vocals_url = res # supabase-py returns string from get_public_url direct? check docs.
-            # Usually res is string in newer versions, or has data. Let's check safely.
-            # In supabase-js: { data: { publicUrl } }
-            # In supabase-py: it typically returns the URL string directly or we construct it.
-            # Checking `storage3` (used by supabase-py): `get_public_url` returns string.
+            vocals_url = res
             
         print(f"--> Done. Vocals: {vocals_url}")
         

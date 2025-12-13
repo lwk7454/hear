@@ -40,6 +40,11 @@ const start = async () => {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
     }) // Enable cookies
+    await server.register(fastifyMultipart, {
+      limits: {
+        fileSize: 100 * 1024 * 1024, // 100MB
+      }
+    })
     await server.register(websocket)
     
     server.register(jwt, {

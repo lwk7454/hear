@@ -10,6 +10,7 @@
 
 ## 2. Technical Stack (Pure TypeScript)
 The technical stack is built entirely on Node.js/TypeScript.
+*   **Storage Policy**: All persistent user assets (Audio, Images) MUST be stored in Supabase Storage. Local filesystem is not used, uploads are streamed.
 *   **Repo**: Monorepo (Turbo + pnpm).
 *   **Frontends**: 
     *   `apps/web` - Creator Dashboard (Next.js 15, Tailwind, Shadcn).
