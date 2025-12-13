@@ -16,9 +16,10 @@ The technical stack is built entirely on Node.js/TypeScript.
     *   `apps/app` - End-User App (Next.js 16, Tailwind, Mobile-First PWA).
 *   **Backend**: `apps/server` (Fastify, Node.js).
 *   **AI/Logic**: `LangChain.js` (Use **DeepSeek** or **Qwen** adapters, NOT OpenAI).
-*   **Ingestion**: `googleapis` (YouTube Data API).
+*   **Ingestion**: `googleapis` (YouTube Data API), `yt-dlp` (Fallback).
 *   **Audio Processing**: `apps/worker` (Python 3.11/FastAPI) handles **Demucs** (Vocals) and **Pyannote** (Diarization).
 *   **Voice Training**: Requirement identified for **Moshi Fine-Tuning**, using `apps/worker` or cloud GPU.
+*   **RAG/Brain**: `LangChain` (Ingestion/Splitting), `Perplexity API` (Bio Research), `Supabase pgvector`.
 
 ## 3. Current Implementation Status
 
@@ -29,6 +30,7 @@ The technical stack is built entirely on Node.js/TypeScript.
 *   **Ingestion Endpoint**:
     *   Route: `POST /ingest/parse` triggers `apps/worker`.
     *   State: **Complete**. `AudioService` downloads via `yt-dlp`. Worker handles Separation/Diarization via GPU.
+    *   **Features**: Deduplication (YouTube/Instagram), Deletion (Storage cleanup), Token Refresh (Google Auth fix).
     *   **Data**: Vocals uploaded to Supabase; Diarization segments stored in `ContentItem.diarization`.
 
 ### Consumer-Side (`apps/app`) - NEW
@@ -46,20 +48,20 @@ The technical stack is built entirely on Node.js/TypeScript.
 
 ### Backend Integration (Complete)
 1.  **Configure Environment**:
-    *   Add `OPENAI_BASE_URL` (DeepSeek), `YOUTUBE_CLIENT_ID`, `IG_CLIENT_ID`, `JWT_SECRET`, `COOKIE_SECRET` to `.env`.
+    *   `NO_PROXY` configured for Worker connectivity.
+    *   `CORS_ORIGINS` configured for production.
 2.  **Connect Database** (Completed):
-    *   `packages/db` has been linked.
+    *   `packages/db` linked and schema updated (Voice/Ingestion).
     *   `auth.ts` handles OAuth token storage.
-    *   `ingestion.ts` uses stored tokens for scanning.
 
-### End-User App Integration
-3.  **Wire Up App APIs**:
-    *   Implement `/api/personas` endpoint (list creators)
-    *   Implement `/api/chat/:creatorId/messages` (text chat)
-    *   Set up WebSocket for real-time messaging
-4.  **Setup Authentication**:
-    *   Configure Supabase Auth with Google & Meta OAuth
-    *   Implement auth callback routes in `apps/app`
+### Immediate Next Steps (Chat Interface)
+3.  **Implement "The Brain" (RAG)**:
+    *   Setup `vectors` table in Supabase.
+    *   Implement **Perplexity API** search for Creator Bio.
+    *   Implement **RAG Pipeline** (LangChain) for grounding answers in Transcripts.
+4.  **Wire Up End-User App**:
+    *   Implement `/api/chat/:creatorId` endpoints.
+    *   Build Chat UI with real backend connection.
 5.  **Voice Integration (Phase 2)**:
     *   Voice Tier 1: Connect to Higgs Audio V2
     *   Voice Tier 2: Integrate Moshi WebSocket streaming
