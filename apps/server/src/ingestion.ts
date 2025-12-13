@@ -555,7 +555,8 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
         const meta = await audio.getVideoMetadata(body.url, connection?.accessToken || undefined, connection?.refreshToken || undefined);
         
         // Robust ID extraction
-        const videoId = body.url.match(/(?:v=|\/)([\w-]{11})(?:\?|&|\/|$)/)?.[1] || `link_${Date.now()}`;
+        // Use AudioService logic if possible, or updated regex here
+        const videoId = body.url.match(/(?:v=|\/|shorts\/|live\/)([\w-]{11})(?:\?|&|\/|$)/)?.[1] || `link_${Date.now()}`;
 
         // 2. Dedup Check
         const existing = await prisma.contentItem.findFirst({

@@ -145,8 +145,15 @@ def process_audio(req: ProcessRequest):
             inference = Inference("pyannote/embedding", use_auth_token=HF_TOKEN)
             inference.to(device)
             
-            emb_golden = inference(golden_path)
+            # Convert to numpy immediately
+            emb_golden = np.array(inference(golden_path))
             
+            # Ensure golden is flat (mean if multiple windows)
+            if len(emb_golden.shape) == 2:
+                 emb_golden_flat = np.mean(emb_golden, axis=0)
+            else:
+                 emb_golden_flat = emb_golden.reshape(-1)
+
             # 3. Compute Embeddings for each Diarized Speaker
             # Concatenate all segments for a speaker to get a robust embedding
             speaker_turns = {}
@@ -193,10 +200,17 @@ def process_audio(req: ProcessRequest):
                 torchaudio.save(spk_wav_path, full_spk_audio, sample_rate)
                 
                 # Compute Embedding
-                emb_spk = inference(spk_wav_path)
+                emb_spk = np.array(inference(spk_wav_path))
                 
+                # Handle Pyannote output (n_windows, dim)
+                if len(emb_spk.shape) == 2:
+                    emb_spk = np.mean(emb_spk, axis=0) # Average over windows to get speaker vector
+                
+                # Reshape just in case
+                emb_spk = emb_spk.reshape(-1)
+
                 # Compare
-                dist = cosine(emb_golden, emb_spk)
+                dist = cosine(emb_golden_flat, emb_spk)
                 print(f"    Distance to {spk}: {dist:.4f}")
                 
                 if dist < min_dist:
@@ -206,30 +220,47 @@ def process_audio(req: ProcessRequest):
             target_speaker = closest_speaker
             print(f"    Target Speaker Identified: {target_speaker} (dist: {min_dist:.4f})")
             
-            # 4. Filter Audio
+            # 4. Filter Audio & Compact Silence (Max 500ms)
             if target_speaker and target_speaker in speaker_turns:
-                # Construct new audio with SILENCE for non-target parts
-                # Initialize silence
-                filtered_waveform = torch.zeros_like(waveform)
+                # Sort segments 
+                target_segments = sorted([s for s in segments if s['speaker'] == target_speaker], key=lambda x: x['start'])
                 
-                for seg in segments:
-                    if seg['speaker'] == target_speaker:
-                        start = int(seg['start'] * sample_rate)
-                        end = int(seg['end'] * sample_rate)
-                        # Copy original audio for this segment
-                        filtered_waveform[:, start:end] = waveform[:, start:end]
+                output_tensors = []
+                last_end = 0.0
+                
+                for i, seg in enumerate(target_segments):
+                    start = float(seg['start'])
+                    end = float(seg['end'])
+                    
+                    # Handle gap (silence)
+                    if i > 0:
+                        gap = start - last_end
+                        # Cap silence at 500ms, but keep smaller gaps (natural pauses)
+                        silence_dur = max(0.0, min(gap, 0.5))
+                        if silence_dur > 0:
+                            silence_samples = int(silence_dur * sample_rate)
+                            output_tensors.append(torch.zeros((waveform.shape[0], silence_samples)))
+                            
+                    # Extract segment
+                    s_frame = int(start * sample_rate)
+                    e_frame = int(end * sample_rate)
+                    output_tensors.append(waveform[:, s_frame:e_frame])
+                    
+                    last_end = end
+                
+                if output_tensors:
+                    filtered_waveform = torch.cat(output_tensors, dim=1)
+                else:
+                    filtered_waveform = torch.zeros((waveform.shape[0], 0))
                 
                 filtered_path = work_dir / "filtered_vocals.wav"
                 torchaudio.save(filtered_path, filtered_waveform, sample_rate)
                 
                 # Swap output path
                 vocals_path = filtered_path
-                # Update segments list to only show target? Or keep all but mark them?
-                # User request: "Vocal audio file it's the original" -> they want the filtered file.
-                # So we update vocals_path which is uploaded next.
                 
-                # Also filter returned segments metadata
-                segments = [s for s in segments if s['speaker'] == target_speaker]
+                # Filter returned segments metadata (Note: these still use ORIGINAL timestamps)
+                segments = target_segments
 
         # D. UPLOAD ARTIFACTS
         vocals_url = req.audio_url # Fallback

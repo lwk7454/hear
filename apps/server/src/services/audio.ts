@@ -62,8 +62,9 @@ export class AudioService {
     }
   }
 
-  private extractVideoId(url: string): string | null {
-      return url.match(/(?:v=|\/)([\w-]{11})(?:\?|&|\/|$)/)?.[1] || null;
+  public extractVideoId(url: string): string | null {
+      // Matches v=ID, /ID, /shorts/ID, /at/ID (handles handles), /live/ID
+      return url.match(/(?:v=|\/|shorts\/|live\/)([\w-]{11})(?:\?|&|\/|$)/)?.[1] || null;
   }
 
   async getVideoMetadata(url: string, accessToken?: string, refreshToken?: string): Promise<{ title: string; description: string; language: string; thumbnail?: string | undefined }> {
