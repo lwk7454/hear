@@ -10,6 +10,7 @@ import fastifyMultipart from '@fastify/multipart'
 import { MoshiClient } from './moshi-client'
 import { ingestionRoutes } from './ingestion'
 import { voiceRoutes } from './routes/voice'
+import { chatRoutes } from './routes/chat'
 
 const server: FastifyInstance = Fastify({
   logger: true
@@ -63,6 +64,7 @@ const start = async () => {
     server.register(authRoutes)
     server.register(ingestionRoutes)
     server.register(voiceRoutes)
+    server.register(chatRoutes)
 
     // 3. Register WebSocket Endpoint
     server.register(async function (fastify) {

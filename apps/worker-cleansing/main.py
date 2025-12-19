@@ -16,22 +16,17 @@ from typing import Optional
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# 1. Load Environment
+# 1. Load Environment (Local)
 BASE_DIR = Path(__file__).resolve().parent
-server_env = BASE_DIR.parent / "server" / ".env"
-worker_env = BASE_DIR / ".env"
-
-if server_env.exists():
-    load_dotenv(dotenv_path=server_env)
-
-if worker_env.exists():
-    load_dotenv(dotenv_path=worker_env, override=True)
+local_env = BASE_DIR / ".env"
+if local_env.exists():
+    load_dotenv(dotenv_path=local_env, override=True)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN") # Required for Pyannote
 
-app = FastAPI(title="Hear GPU Worker")
+app = FastAPI(title="Hear GPU Worker (Cleanser)")
 
 # Setup Supabase
 supabase: Optional[Client] = None

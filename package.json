@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "turbo dev",
+    "dev:worker": "turbo dev:worker",
+    "dev:worker:win": "turbo dev:worker:win",
     "build": "turbo build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

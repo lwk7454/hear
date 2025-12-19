@@ -100,6 +100,55 @@ export class StorageService {
             await this.supabase.storage.createBucket(this.bucket, { public: true })
         }
     }
+
+    async download(url: string, destPath: string): Promise<string> {
+        console.log(`[StorageService] Downloading ${url} to ${destPath}...`);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        fs.writeFileSync(destPath, buffer);
+        return destPath;
+    }
+    async update(publicUrl: string, file: string | Buffer): Promise<string> {
+        // Reuse upload which uses upsert=true
+        // We just need to extract the path from the URL
+        const parts = publicUrl.split(`/${this.bucket}/`);
+        if (parts.length < 2 || !parts[1]) throw new Error("Invalid URL for update");
+        return this.upload(file, parts[1]);
+    }
+
+    async list(folderPath: string): Promise<string[]> {
+        const { data, error } = await this.supabase
+            .storage
+            .from(this.bucket)
+            .list(folderPath, {
+                limit: 100,
+                offset: 0,
+                sortBy: { column: 'name', order: 'asc' },
+            });
+            
+        if (error) {
+            console.error("[StorageService] List Failed:", error);
+            return [];
+        }
+        
+        return data.map(f => `${folderPath}/${f.name}`);
+    }
+
+    async deleteMany(paths: string[]): Promise<void> {
+        if (!paths.length) return;
+        
+        const { error } = await this.supabase
+            .storage
+            .from(this.bucket)
+            .remove(paths);
+            
+        if (error) {
+            console.error("[StorageService] DeleteMany Failed:", error);
+        } else {
+            console.log(`[StorageService] Deleted ${paths.length} files`);
+        }
+    }
 }
 
 export const storageService = new StorageService()

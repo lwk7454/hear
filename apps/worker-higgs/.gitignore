@@ -1,0 +1,8 @@
+__pycache__/
+venv/
+.env
+voices/
+output/
+*.wav
+*.pt
+server.log

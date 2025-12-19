@@ -19,6 +19,7 @@ The technical stack is built entirely on Node.js/TypeScript.
 *   **AI/Logic**: `LangChain.js` (Use **DeepSeek** or **Qwen** adapters, NOT OpenAI).
 *   **Ingestion**: `googleapis` (YouTube Data API), `yt-dlp` (Fallback).
 *   **Audio Processing**: `apps/worker` (Python 3.11/FastAPI) handles **Demucs** (Vocals) and **Pyannote** (Diarization).
+*   **Voice Generation**: `apps/worker-higgs` (Python 3.10/FastAPI) handles **Higgs Audio V2** TTS.
 *   **Voice Training**: Requirement identified for **Moshi Fine-Tuning**, using `apps/worker` or cloud GPU.
 *   **RAG/Brain**: `LangChain` (Ingestion/Splitting), `Perplexity API` (Bio Research), `Supabase pgvector`.
 
@@ -28,11 +29,14 @@ The technical stack is built entirely on Node.js/TypeScript.
 *   **Creator Dashboard**:
     *   URL: `/creator` (in `apps/web`).
     *   State: **Updated**. Features "Quick Link" (YouTube) and "Authorized Connect" (Instagram). Displays Voice Tier and Engagement Style.
-*   **Ingestion Endpoint**:
-    *   Route: `POST /ingest/parse` triggers `apps/worker`.
-    *   State: **Complete**. `AudioService` downloads via `yt-dlp`. Worker handles Separation/Diarization via GPU.
-    *   **Features**: Deduplication (YouTube/Instagram), Deletion (Storage cleanup), Token Refresh (Google Auth fix).
-    *   **Data**: Vocals uploaded to Supabase; Diarization segments stored in `ContentItem.diarization`.
+
+### AI Processing & Voice (`apps/worker` & `apps/worker-higgs`)
+*   **Audio Processing (`apps/worker`)**:
+    *   State: **Complete**. Handles Separation (Demucs) and Diarization (Pyannote).
+*   **Voice Generation (`apps/worker-higgs`)**:
+    *   State: **Active**. Higgs Audio V2 (3B) integrated with 8-bit quantization.
+    *   **Features**: Supports **Instant Voice Cloning** via cached audio IDs. Resolved shape mismatch issues in generation loop.
+    *   **Endpoint**: `POST /synthesize` is fully functional.
 
 ### Consumer-Side (`apps/app`) - NEW
 *   **End-User App**:
@@ -64,7 +68,7 @@ The technical stack is built entirely on Node.js/TypeScript.
     *   Implement `/api/chat/:creatorId` endpoints.
     *   Build Chat UI with real backend connection.
 5.  **Voice Integration (Phase 2)**:
-    *   Voice Tier 1: Connect to Higgs Audio V2
+    *   Voice Tier 1: Connect to Higgs Audio V2 (Worker-Higgs)
     *   Voice Tier 2: Integrate Moshi WebSocket streaming
 
 ## 5. How to Run
@@ -82,22 +86,12 @@ cd apps/web && pnpm dev    # Creator Dashboard: http://localhost:3000
 cd apps/server && pnpm dev # Backend: http://localhost:8000
 cd apps/app && pnpm dev    # End-User App: http://localhost:3001
 
-# Start Python Worker (New Terminal)
+# Start Python Workers (New Terminals)
 cd apps/worker
-source venv/bin/activate   # (Mac/Linux)
-# .\venv\Scripts\Activate  # (Windows)
 python main.py             # Worker: http://localhost:8001
-```
 
-### Build
-```bash
-# Build all apps
-pnpm build
-
-# Build specific app
-pnpm build --filter app
-pnpm build --filter web
-pnpm build --filter server
+cd apps/worker-higgs
+python main.py             # Worker-Higgs: http://localhost:8002
 ```
 
 ## 6. Architecture Overview
@@ -109,7 +103,8 @@ The platform now has a **two-app architecture**:
 | `apps/web` | Creator Dashboard | Creators | Next.js 15 | Active |
 | `apps/app` | Consumer Experience | Fans | Next.js 16 PWA | Scaffolded |
 | `apps/server` | API + Orchestration | Both | Fastify | Active |
-| `apps/worker` | AI Processing | Backend | Python 3.11 | Active |
+| `apps/worker` | Audio Processing | Backend | Python 3.11 | Active |
+| `apps/worker-higgs` | Voice Generation | Backend | Python 3.10 | Active |
 
 **Voice Tiers**:
 - **Tier 1**: Async voice messages (Higgs TTS)
@@ -129,7 +124,8 @@ The platform now has a **two-app architecture**:
 - [ ] WebSocket real-time messaging
 
 ### Phase 2: Voice Layer
-- [ ] Voice Tier 1: Audio upload/playback
+- [x] Voice Tier 1: Worker implementation (Higgs V2)
+- [ ] Voice Tier 1: Audio upload/playback integration in server
 - [ ] Voice Tier 2: WebSocket audio streaming
 - [ ] Moshi service integration
 
@@ -146,6 +142,7 @@ The platform now has a **two-app architecture**:
 - ✅ Ingestion pipeline (YouTube/Instagram) - *Backend Implemented*
 - ✅ End-User App UI (all pages)
 - ✅ Voice chat UI mockups
+- ✅ Voice Tier 1 Worker (Higgs V2)
 
 **Pending Integration**:
 - ⏳ Database persistence (Auth tokens & User Session implemented, Content storage next)

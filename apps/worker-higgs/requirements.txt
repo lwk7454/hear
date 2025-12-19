@@ -1,0 +1,36 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+requests==2.31.0
+python-dotenv==1.0.0
+click
+scipy
+numpy
+supabase
+pydub
+pandas
+librosa
+boto3
+s3fs
+json_repair
+pydantic
+omegaconf
+langid
+jieba
+loguru
+descript-audio-codec
+vector-quantize-pytorch
+dacite
+
+# AI Core (Pinned for compatibility)
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1
+torchaudio==2.5.1
+torchvision==0.20.1
+transformers==4.46.0
+accelerate
+bitsandbytes
+huggingface-hub
+
+# Higgs Audio (Local Vendor Copy)
+-e lib/higgs-audio

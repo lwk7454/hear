@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
+import { ExternalLink } from "lucide-react"
 
 export function CreatorDashboard() {
   const [status, setStatus] = useState<'idle' | 'processing' | 'ready'>('idle')
   const [url, setUrl] = useState('')
   const [videos, setVideos] = useState<any[]>([])
   const [isEnrolled, setIsEnrolled] = useState(false)
+  const [creator, setCreator] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const searchParams = useSearchParams()
@@ -38,6 +40,7 @@ export function CreatorDashboard() {
             if (!data.authenticated) {
                 window.location.href = '/login';
             } else {
+                setCreator(data.creator)
                 // Fetch existing videos
                 refreshVideos();
                 
@@ -172,22 +175,91 @@ export function CreatorDashboard() {
        }
   }
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const toggleSelection = (id: string) => {
+      const newSet = new Set(selectedIds)
+      if (newSet.has(id)) {
+          newSet.delete(id)
+      } else {
+          newSet.add(id)
+      }
+      setSelectedIds(newSet)
+  }
+
+  const toggleSelectAll = () => {
+      if (selectedIds.size === videos.length) {
+          setSelectedIds(new Set())
+      } else {
+          setSelectedIds(new Set(videos.map(v => v.id)))
+      }
+  }
+
+  const handleBatchIngest = async () => {
+      if (selectedIds.size === 0) return;
+      setStatus('processing')
+      try {
+          const res = await fetch('http://localhost:8000/ingest/batch/queue', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ ids: Array.from(selectedIds) })
+          });
+          const json = await res.json();
+          if (json.status === 'success') {
+              toast.success(json.msg || "Batch started");
+              // Optimistic update
+              setVideos(prev => prev.map(v => selectedIds.has(v.id) ? { ...v, status: 'PROCESSING' } : v));
+              setSelectedIds(new Set()); // Clear selection
+          } else {
+              toast.error(json.error || "Batch failed");
+          }
+      } catch (e) {
+          console.error(e);
+          toast.error("Batch ingest error");
+      } finally {
+          setStatus('ready')
+      }
+  }
+
+  const handleBatchDelete = async () => {
+      if (selectedIds.size === 0) return;
+      if (!confirm(`Are you sure you want to delete ${selectedIds.size} items?`)) return;
+      
+      setStatus('processing')
+      try {
+          const res = await fetch('http://localhost:8000/ingest/batch/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ ids: Array.from(selectedIds) })
+          });
+          const json = await res.json();
+          if (json.status === 'success') {
+              toast.success(`Deleted ${json.count} items`);
+              setVideos(prev => prev.filter(v => !selectedIds.has(v.id)));
+              setSelectedIds(new Set());
+          } else {
+               toast.error(json.error || "Batch delete failed");
+          }
+      } catch (e) {
+          console.error(e);
+          toast.error("Batch delete error");
+      } finally {
+          setStatus('ready')
+      }
+  }
+
   return (
     <div className="w-full max-w-5xl mx-auto p-6 space-y-8">
-      <div className="flex flex-col gap-2 relative">
-         <div className="flex items-center justify-between">
-            <div>
-                 <h2 className="text-3xl font-bold tracking-tight">Creator Studio</h2>
-                 <p className="text-muted-foreground">Train your Digital Twin by ingesting your content.</p>
-            </div>
-            <Button variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={async () => {
-                 await fetch('http://localhost:8000/auth/logout', { method: 'POST', credentials: 'include' });
-                 window.location.href = '/';
-            }}>
-                Logout
-            </Button>
-         </div>
-      </div>
+       <div className="flex flex-col gap-2 relative">
+          <div className="flex items-center justify-between">
+             <div>
+                  <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+                  <p className="text-muted-foreground">Manage your content and voice identity.</p>
+             </div>
+          </div>
+       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-1 space-y-4">
@@ -271,10 +343,72 @@ export function CreatorDashboard() {
                      <Button onClick={handleIngest} disabled={status === 'processing' || !isEnrolled} className="w-full">Ingest</Button>
                 </CardContent>
              </Card>
+
+             {/* Danger Zone */}
+             <Card className="border-destructive/50">
+                <CardHeader>
+                     <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                     <CardDescription>Irreversible actions.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                     <Button 
+                        variant="destructive" 
+                        className="w-full"
+                        onClick={async () => {
+                            if (!confirm("Are you ABSOLUTELY sure? This will delete ALL your training data, library items, and digital twin memory. This cannot be undone.")) return;
+                            
+                            try {
+                               setStatus('processing');
+                               const res = await fetch('http://localhost:8000/ingest/reset', { method: 'DELETE', credentials: 'include' });
+                               const json = await res.json();
+                               if (json.status === 'success') {
+                                   toast.success("Twin data reset successfully.");
+                                   setVideos([]); // Clear local list
+                                   // Optionally refresh everything
+                                   window.location.reload();
+                               } else {
+                                   throw new Error(json.error || "Reset failed");
+                               }
+                            } catch (e: any) {
+                               console.error(e);
+                               toast.error(e.message || "Failed to reset data");
+                            } finally {
+                               setStatus('idle');
+                            }
+                        }}
+                     >
+                        Reset Digital Twin Data
+                     </Button>
+                </CardContent>
+             </Card>
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-            <h3 className="text-xl font-semibold">Library ({videos.length})</h3>
+            <div className="flex items-center justify-between">
+                <h3 className="text-xl font-semibold">Library ({videos.length})</h3>
+                {videos.length > 0 && (
+                     <div className="flex items-center gap-2">
+                         <input 
+                            type="checkbox" 
+                            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            checked={videos.length > 0 && selectedIds.size === videos.length}
+                            onChange={toggleSelectAll}
+                         />
+                         <span className="text-sm text-muted-foreground mr-4">Select All</span>
+                         
+                         {selectedIds.size > 0 && (
+                             <>
+                                <Button size="sm" variant="outline" onClick={handleBatchIngest}>
+                                    Ingest ({selectedIds.size})
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={handleBatchDelete}>
+                                    Delete ({selectedIds.size})
+                                </Button>
+                             </>
+                         )}
+                     </div>
+                )}
+            </div>
             
             {status === 'processing' && videos.length === 0 && (
                  <div className="py-12 flex flex-col items-center justify-center space-y-4 text-center">
@@ -285,7 +419,15 @@ export function CreatorDashboard() {
 
             <div className="grid gap-4">
                 {videos.map((video) => (
-                    <Card key={video.id} className="overflow-hidden flex flex-col sm:flex-row">
+                    <Card key={video.id} className={`overflow-hidden flex flex-col sm:flex-row transition-colors ${selectedIds.has(video.id) ? 'border-primary/50 bg-accent/5' : ''}`}>
+                         <div className="p-2 flex items-start justify-center">
+                             <input 
+                                type="checkbox"
+                                className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary mt-2 ml-2"
+                                checked={selectedIds.has(video.id)}
+                                onChange={() => toggleSelection(video.id)}
+                             />
+                         </div>
                         <div className="sm:w-48 h-32 bg-muted relative shrink-0">
                             {video.thumbnail ? (
                                 <img src={video.thumbnail} className="w-full h-full object-cover" alt={video.title}/>
@@ -296,10 +438,18 @@ export function CreatorDashboard() {
                                 {video.type}
                             </div>
                         </div>
-                        <div className="p-4 flex flex-col justify-between flex-1">
+                        <div className="p-4 flex flex-col justify-between flex-1 min-w-0">
                              <div>
-                                 <h4 className="font-semibold line-clamp-1" title={video.title}>{video.title}</h4>
-                                 <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{video.description}</div>
+                                 <a 
+                                     href={video.url} 
+                                     target="_blank" 
+                                     rel="noopener noreferrer" 
+                                     className="group flex items-center gap-2 hover:text-primary transition-colors"
+                                 >
+                                     <ExternalLink className="w-4 h-4 shrink-0" />
+                                     <h4 className="font-semibold line-clamp-1" title={video.title}>{video.title}</h4>
+                                 </a>
+                                 <div className="text-xs text-muted-foreground mt-1 line-clamp-2 break-all">{video.description}</div>
                                  <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                                      <span>👁 {parseInt(video.stats?.views || "0").toLocaleString()}</span>
                                      <span>👍 {parseInt(video.stats?.likes || "0").toLocaleString()}</span>

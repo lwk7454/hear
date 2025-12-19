@@ -19,7 +19,7 @@
 - [/] **Creator Dashboard & Brain**
     - [x] Basic UI Scaffolding
     - [x] Implement "Persona Config" (System Prompt Builder)
-    - [ ] Implement Text Chat Interface (Baseline)
+    - [x] Implement Text Chat Interface (Baseline - Twin Test Section)
 - [ ] **Voice Layer (Tier 2 Premium)**
     - [ ] Setup GPU Worker for LoRA Training
     - [ ] Implement Moshi Fine-Tuning Pipeline

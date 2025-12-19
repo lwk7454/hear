@@ -28,6 +28,9 @@ model Creator {
 
   // Ingested Data
   contents ContentItem[]
+  
+  // Chat Sessions
+  chatSessions ChatSession[]
 
   // Voice Enrollment (Golden Sample)
   voiceSample String? // Path to local file
@@ -114,5 +117,49 @@ model MemoryChunk {
   content       String   @db.Text
   embedding     Unsupported("vector(1536)")? // OpenAI/DeepSeek embedding size
 
+  createdAt     DateTime @default(now())
+}
+
+// --- Chat & Connections ---
+
+model Fan {
+  id        String   @id @default(uuid())
+  email     String?  // Optional for anon/web users
+  fingerprint String? // Browser fingerprint or device ID
+  
+  // Relations
+  chatSessions ChatSession[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  
+  fanId     String
+  fan       Fan      @relation(fields: [fanId], references: [id])
+  
+  creatorId String
+  creator   Creator  @relation(fields: [creatorId], references: [id])
+  
+  messages  Message[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Message {
+  id            String   @id @default(uuid())
+  chatSessionId String
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id])
+  
+  role          String   // "USER", "ASSISTANT"
+  content       String?  @db.Text
+  
+  // Audio
+  audioUrl      String?  // Supabase URL to compressed audio
+  durationSec   Float?
+  
   createdAt     DateTime @default(now())
 }

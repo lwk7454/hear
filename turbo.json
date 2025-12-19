@@ -13,6 +13,14 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "dev:worker": {
+      "cache": false,
+      "persistent": true
+    },
+    "dev:worker:win": {
+      "cache": false,
+      "persistent": true
     }
   }
 }

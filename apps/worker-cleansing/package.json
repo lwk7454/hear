@@ -1,0 +1,10 @@
+{
+  "name": "worker-cleansing",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:worker": "source venv/bin/activate && bash setup.sh && python main.py",
+    "dev:worker:win": "venv\\Scripts\\activate.bat && .\\setup.bat && python main.py",
+    "start": "source venv/bin/activate && bash setup.sh && python main.py"
+  }
+}

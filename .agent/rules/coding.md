@@ -9,3 +9,7 @@ trigger: always_on
 1. Do not create or use any mocks in feature code unless explicitly told to do so. If anything is too hard to do now, leave that to a TODO list.
 
 1. When solving module compatibility issues between CommonJS and ESM, always lean to ESM unless impossible to do so.
+
+1. When introducing environment variables, if you can't edit .env files, remember to update the respective example.env files (which are included in git).
+
+1. When database schema is changed, make sure both client and server sides have the same schema, and changes are applied to Supabase DB. 

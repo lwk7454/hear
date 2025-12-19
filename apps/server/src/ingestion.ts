@@ -283,10 +283,13 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
          
          // For MVP Split Arch: Use full vocals as sample
          const sampleUrl = vocalsUrl; 
+         
+         // Download vocals locally for Higgs
+         const vocalsPath = rawPath.replace('_full.mp3', '_vocals_dl.wav'); // or similar temp path
+         await storageService.download(vocalsUrl, vocalsPath);
 
          const higgs = new HiggsService();
-         // Use rawPath (local) for Higgs mock check since we don't have local vocals
-         const voiceId = await higgs.generateEmbedding(rawPath);
+         const voiceId = await higgs.generateEmbedding(vocalsPath, creatorId);
          
          return {
              ...personaAnalysis,
@@ -451,7 +454,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
                         status: 'COMPLETED',
                         audioPath: audioPath || null, 
                         transcript: transcript || null,
-                        diarization: segments || null
+                        diarization: segments || []
                     }
                 });
                 console.log(`[Queue] Completed ${id}`);
@@ -505,6 +508,173 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
           console.error("Delete failed", e);
           reply.code(500); 
           return { status: 'error', error: 'Failed to delete item' };
+      }
+  });
+
+  // Batch Queue
+  fastify.post('/ingest/batch/queue', async (request, reply) => {
+      try {
+          let user;
+          try {
+               user = await (request as any).jwtVerify() as { id: string };
+          } catch (e) {
+               return reply.code(401).send({ error: "Unauthorized" });
+          }
+
+          const { ids } = z.object({ ids: z.array(z.string()) }).parse(request.body);
+
+          // Get items to confirm ownership
+          const items = await prisma.contentItem.findMany({
+              where: {
+                  id: { in: ids },
+                  creatorId: user.id
+              }
+          });
+          
+          if (items.length === 0) return { status: 'success', msg: 'No matching items found' };
+
+          // Mark all as PROCESSING first
+          await prisma.contentItem.updateMany({
+              where: { id: { in: items.map(i => i.id) } },
+              data: { status: 'PROCESSING' }
+          });
+
+          // Fire and forget processing loop
+          items.forEach(item => {
+              if (item.status === 'COMPLETED') return; // Skip if already done? Actually user might want re-ingest. Let's allow it but UI should hide it.
+              
+              const type = item.platform === 'YOUTUBE' ? 'video' : 'post';
+              const url = item.platform === 'YOUTUBE' ? `https://youtube.com/watch?v=${item.externalId}` : (item.imagePath || item.externalId);
+              
+              parseContentItem(item.creatorId, { url: url!, type, contentId: item.id })
+                .then(async (res) => {
+                    if (!res) return;
+                    
+                    let audioPath = null;
+                    let transcript = null;
+                    let segments = null;
+
+                    if ('artifacts' in res) {
+                        // @ts-ignore
+                        audioPath = res.artifacts?.vocals;
+                        // @ts-ignore
+                        segments = res.artifacts?.segments;
+                        transcript = JSON.stringify(res.style);
+                    }
+
+                    await prisma.contentItem.update({
+                        where: { id: item.id },
+                        data: { 
+                            status: 'COMPLETED',
+                            audioPath: audioPath || null, 
+                            transcript: transcript || null,
+                            diarization: segments || []
+                        }
+                    });
+                })
+                .catch(async (e) => {
+                    console.error(`[Batch Queue] Failed ${item.id}`, e);
+                    await prisma.contentItem.update({
+                        where: { id: item.id },
+                        data: { status: 'FAILED' }
+                    });
+                });
+          });
+
+          return { status: 'success', msg: `Queued ${items.length} items` };
+
+      } catch (e) {
+          console.error("Batch Queue Error", e);
+          reply.code(500);
+          return { status: 'error', error: 'Failed to batch queue items' };
+      }
+  });
+
+  // Batch Delete
+  fastify.post('/ingest/batch/delete', async (request, reply) => {
+      try {
+          let user;
+          try {
+               user = await (request as any).jwtVerify() as { id: string };
+          } catch (e) {
+               return reply.code(401).send({ error: "Unauthorized" });
+          }
+
+          const { ids } = z.object({ ids: z.array(z.string()) }).parse(request.body);
+
+          const items = await prisma.contentItem.findMany({
+              where: {
+                  id: { in: ids },
+                  creatorId: user.id
+              }
+          });
+
+          // Delete files for each item
+          for (const item of items) {
+              if (item.audioPath) {
+                  await storageService.delete(item.audioPath).catch(err => console.error(`Failed to delete file for ${item.id}`, err));
+              }
+          }
+
+          // Delete DB records
+          await prisma.contentItem.deleteMany({
+              where: {
+                  id: { in: ids },
+                  creatorId: user.id
+              }
+          });
+
+          return { status: 'success', count: items.length };
+      } catch (e) {
+          console.error("Batch Delete Error", e);
+          reply.code(500);
+          return { status: 'error', error: 'Failed to batch delete items' };
+      }
+  });
+
+
+
+  // Step 5: Reset / Clear All Training Data
+  fastify.delete('/ingest/reset', async (request, reply) => {
+      console.log("[Reset] Resetting creator training data...");
+      try {
+          let user;
+          try {
+               user = await (request as any).jwtVerify() as { id: string };
+          } catch (e) {
+               return reply.code(401).send({ error: "Unauthorized" });
+          }
+          
+          const creatorId = user.id;
+
+          // 1. Delete all ContentItems from DB
+          // We do this first or alongside storage cleanup
+          await prisma.contentItem.deleteMany({
+              where: { creatorId }
+          });
+          
+          // 2. Clear Storage Bucket
+          // Path: ingest/{creatorId}/...
+          const folder = `ingest/${creatorId}`;
+          const files = await storageService.list(folder);
+          
+          if (files.length > 0) {
+              await storageService.deleteMany(files);
+          }
+          
+          // 3. Reset Persona Profile (The "Brain")
+          // If we want a full reset of the twin's knowledge:
+          await prisma.personaProfile.delete({
+             where: { creatorId }
+          }).catch(() => {}); // Ignore if not exists
+
+          console.log(`[Reset] Completed for ${creatorId}: Deleted items and ${files.length} files.`);
+
+          return { status: 'success', message: 'Twin training data reset complete' };
+      } catch (e) {
+          console.error("[Reset Error]", e);
+          reply.code(500);
+          return { status: 'error', error: 'Failed to reset training data' };
       }
   });
 
@@ -597,7 +767,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
                          status: 'COMPLETED',
                          audioPath: audioPath || null,
                          transcript: transcript || null,
-                         diarization: segments || null
+                         diarization: segments || []
                      }
                  });
             })
