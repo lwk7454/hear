@@ -6,7 +6,7 @@
 *   **Scan Targets**:
     *   **YouTube**: Videos (Audio/Transcripts), Titles, Descriptions, Comments.
     *   **Instagram**: Images, Text Posts, Comments.
-*   **Output**: A dual-training set for Text Persona (DeepSeek) and Voice Model (Tier 1: Higgs V2 / Tier 2: Moshi).
+*   **Output**: A dual-training set for Text Persona (DeepSeek) and Voice Model (Tier 1: Higgs V2 / Tier 2: GLM-4-Voice).
 
 ## 2. Technical Stack (Pure TypeScript)
 The technical stack is built entirely on Node.js/TypeScript.
@@ -20,7 +20,7 @@ The technical stack is built entirely on Node.js/TypeScript.
 *   **Ingestion**: `googleapis` (YouTube Data API), `yt-dlp` (Fallback).
 *   **Audio Processing**: `apps/worker` (Python 3.11/FastAPI) handles **Demucs** (Vocals) and **Pyannote** (Diarization).
 *   **Voice Generation**: `apps/worker-higgs` (Python 3.10/FastAPI) handles **Higgs Audio V2** TTS.
-*   **Voice Training**: Requirement identified for **Moshi Fine-Tuning**, using `apps/worker` or cloud GPU.
+*   **Voice Training**: Requirement identified for **GLM-4-Voice Fine-Tuning** (LoRA), using cloud GPU (RunPod).
 *   **RAG/Brain**: `LangChain` (Ingestion/Splitting), `Perplexity API` (Bio Research), `Supabase pgvector`.
 
 ## 3. Current Implementation Status
@@ -69,7 +69,7 @@ The technical stack is built entirely on Node.js/TypeScript.
     *   Build Chat UI with real backend connection.
 5.  **Voice Integration (Phase 2)**:
     *   Voice Tier 1: Connect to Higgs Audio V2 (Worker-Higgs)
-    *   Voice Tier 2: Integrate Moshi WebSocket streaming
+    *   Voice Tier 2: Integrate GLM-4-Voice pseudo-duplex streaming
 
 ## 5. How to Run
 
@@ -108,7 +108,7 @@ The platform now has a **two-app architecture**:
 
 **Voice Tiers**:
 - **Tier 1**: Async voice messages (Higgs TTS)
-- **Tier 2**: Live duplex conversation (Moshi)
+- **Tier 2**: Live pseudo-duplex conversation (GLM-4-Voice)
 
 **Key Documents**:
 - Creator workflows: `docs/implementation_plan.md`
@@ -126,8 +126,8 @@ The platform now has a **two-app architecture**:
 ### Phase 2: Voice Layer
 - [x] Voice Tier 1: Worker implementation (Higgs V2)
 - [ ] Voice Tier 1: Audio upload/playback integration in server
-- [ ] Voice Tier 2: WebSocket audio streaming
-- [ ] Moshi service integration
+- [ ] Voice Tier 2: Pseudo-duplex audio streaming
+- [ ] GLM-4-Voice worker implementation (LoRA)
 
 ### Phase 3: Polish
 - [ ] Search and filtering logic

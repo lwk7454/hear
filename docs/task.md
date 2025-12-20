@@ -21,8 +21,8 @@
     - [x] Implement "Persona Config" (System Prompt Builder)
     - [x] Implement Text Chat Interface (Baseline - Twin Test Section)
 - [ ] **Voice Layer (Tier 2 Premium)**
-    - [ ] Setup GPU Worker for LoRA Training
-    - [ ] Implement Moshi Fine-Tuning Pipeline
+    - [ ] Setup GPU Worker for LoRA Training (RunPod)
+    - [ ] Implement GLM-4-Voice Fine-Tuning Pipeline
 
 ## Phase 2: Memory & Persona (The "Brain")
 - [ ] **Memory Infrastructure**

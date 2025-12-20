@@ -28,10 +28,10 @@
     - [x] Implement Chat Interface (Text + Voice UI Modes)
     - [ ] Connect to Backend APIs
     - [ ] Integrate Voice Tier 1 (Async with Higgs)
-    - [ ] Integrate Voice Tier 2 (Duplex with Moshi)
+    - [ ] Integrate Voice Tier 2 (Pseudo-Duplex with GLM-4-Voice)
 - [ ] **Voice Layer (Tier 2 Premium)**
-    - [ ] Setup GPU Worker for LoRA Training
-    - [ ] Implement Moshi Fine-Tuning Pipeline
+    - [ ] Setup GPU Worker for LoRA Training (RunPod)
+    - [ ] Implement GLM-4-Voice Fine-Tuning Pipeline
 
 ## Phase 2: Memory & Persona (The "Brain")
 - [ ] **Memory Infrastructure**

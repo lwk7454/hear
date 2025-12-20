@@ -12,7 +12,7 @@
 *   **[App Architecture](docs/app_architecture.md)**: End-User App (apps/app) architecture, API contracts, and integration patterns.
 *   **[Handover](docs/handover.md)**: Current status & immediate next steps.
 *   **[Task List](docs/task.md)**: Roadmap progress.
-*   **[Integration Guide](docs/integration_guide.md)**: Setup guides (e.g., Local Moshi).
+*   **[Integration Guide](docs/integration_guide.md)**: Setup guides (e.g., GLM-4-Voice).
 *   **[Production Strategy](docs/production_strategy.md)**: Deployment & Safety.
 
 
@@ -32,7 +32,7 @@
     *   **Fine-Tuning Studio**: Simple controls for "Topics to Avoid" (e.g., "Don't talk about my ex") and "Personality Sliders" (Sassy vs. Supportive).
 2.  **Hybrid Engagement**:
     *   **Text Chat (Baseline)**: Always-available, low-cost intimacy for the massive fan base.
-    *   **Voice-to-Voice (Premium)**: High-fidelity, emotional audio calls for super-fans, utilizing the same "Brain" but adding the "Mouth".
+    *   **Voice-to-Voice (Premium)**: High-fidelity, emotional audio calls for super-fans, utilizing GLM-4-Voice for pseudo-duplex interaction.
 
 ## 3. Architecture Overview
 We separate the **Persona Brain** from the **Interaction Modality**, and provide **two distinct UX surfaces**:
@@ -71,7 +71,7 @@ graph TD
     subgraph "End-User Interface"
         ConsumerApp["Mobile App (apps/app)"]
         TextUI[Text Chat]
-        VoiceUI["Voice Mode (Moshi/Higgs V2)"]
+        VoiceUI["Voice Mode (GLM-4-Voice/Higgs V2)"]
     end
     
     %% Flow

@@ -11,13 +11,13 @@ graph TB
     User[Fan/Consumer]
     App[End-User App<br/>apps/app]
     Server[Backend Server<br/>apps/server]
-    Moshi[Moshi Service<br/>apps/moshi]
+    GLM[GLM-4-Voice Service<br/>apps/worker-glm]
     Supabase[(Supabase DB)]
     
     User -->|Browse & Chat| App
     App -->|REST API| Server
     App -->|WebSocket Audio| Server
-    Server -->|Duplex Audio| Moshi
+    Server -->|Pseudo-Duplex Audio| GLM
     Server -->|Query Data| Supabase
 ```
 
@@ -215,20 +215,21 @@ User records voice → Server processes → Response as audio bubble
 - Processing (waiting for response)
 - Complete (audio bubble appears)
 
-#### Mode 3: Voice Tier 2 (Live Duplex)
+#### Mode 3: Voice Tier 2 (Live Pseudo-Duplex)
 
-Full-duplex, Moshi-powered conversation.
+Full-duplex style conversation powered by GLM-4-Voice (streaming LoRA).
 
 **Flow**:
 ```
 1. User taps Phone icon → Enter voice mode
 2. Establish WebSocket connection: ws://server/ws/audio
-3. Two-way streaming:
+3. Pseudo-Duplex streaming:
    - Client → Server: User audio (PCM chunks)
    - Server → Client: Creator audio (PCM chunks)
-4. Server proxies to Moshi service (2-stream model)
-5. Real-time playback in app
-6. User taps End Call → Close WebSocket
+4. Server proxies to GLM-4-Voice worker
+5. Interruption: Server-side VAD (Voice Activity Detection) instantly cuts generation if user speaks.
+6. Real-time playback in app
+7. User taps End Call → Close WebSocket
 ```
 
 **WebSocket Protocol**:
@@ -437,8 +438,8 @@ vercel --prod
 
 ### Phase 3: Voice Tier 2
 - [ ] Establish WebSocket audio connection
-- [ ] Implement 2-way streaming
-- [ ] Integrate Moshi service
+- [ ] Implement pseudo-duplex streaming with VAD
+- [ ] Integrate GLM-4-Voice worker (RunPod)
 - [ ] Build full-screen call UI
 
 ### Phase 4: Polish

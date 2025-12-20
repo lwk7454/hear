@@ -18,7 +18,7 @@ We use a **Split-Stack Architecture** to leverage the best tools for UI and AI:
 - **AI Models**:
     *   **Brain**: DeepSeek-V3 / Qwen-2.5 (Reasoning).
     *   **Voice Tier 1 (Standard)**: Higgs Audio V2 (Zero-shot cloning via embedding).
-    *   **Voice Tier 2 (Premium)**: Moshi (Fine-tuned LoRA for max fidelity).
+    *   **Voice Tier 2 (Premium)**: GLM-4-Voice (Pseudo-duplex, LoRA fine-tuned for max character fidelity).
 
 ## Proposed Changes (Phase 1: Hollow MVP)
 
@@ -63,8 +63,8 @@ The ingestion process is decoupled into two independent stages to support both A
         *   **Engagement**: Scrape comments.
 2.  **Process Mind**: Text -> DeepSeek extracting "Style", "Facts", "Beliefs" -> Vector DB.
 3.  **Process Voice**:
-    *   *Default*: Extract 30s clean sample -> Generate Voice Embedding.
-    *   *Premium*: Queue 30m audio -> Start LoRA Training Job.
+    *   *Default (Tier 1)*: Extract 30s clean sample -> Generate Voice Embedding (Higgs V2).
+    *   *Premium (Tier 2)*: Queue audio-text pairs -> **QLoRA Fine-Tuning** (GLM-4-Voice in 4-bit to fit 24GB VRAM) -> Load adapter at runtime.
 4.  **Deploy**: Bot is ready.
 
 ## Verification Plan
