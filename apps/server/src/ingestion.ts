@@ -7,6 +7,10 @@ import { HiggsService } from './services/higgs'
 import { AudioService } from './services/audio'
 import { InstagramService } from './services/instagram'
 import { YouTubeService } from './services/youtube'
+import { VisionService } from './services/vision'
+import { RAGService } from './services/rag'
+import { BioService } from './services/bio'
+import { FactHistorian } from './services/historian'
 
 // Schema for Step 1: Discovery
 const DiscoverySchema = z.object({
@@ -22,6 +26,8 @@ const ParseContentSchema = z.object({
   type: z.enum(['video', 'post']),
   url: z.string().url()
 });
+
+import { isAdminUser, verifyUser } from './lib/auth';
 
 import { prisma } from './lib/db';
 
@@ -64,7 +70,8 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
         // 1. Identify the Creator (Channel ID)
         let channelId; 
         try {
-            channelId = await ytService.getChannelID();
+            const details = await ytService.getChannelDetails();
+            channelId = details.id;
         } catch (e) {
             console.error("Failed to get Channel ID", e);
             throw new Error("Could not fetch YouTube Channel ID. Connection might be invalid.");
@@ -263,14 +270,17 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
                  creatorId,
                  tone: personaAnalysis.style.tone,
                  keywords: personaAnalysis.style.keywords,
-                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
              },
              update: {
                  tone: personaAnalysis.style.tone,
                  keywords: personaAnalysis.style.keywords,
-                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
              }
          });
+
+         // Consolidate Facts (Historian)
+         const historian = new FactHistorian();
+         const allRawFacts = [...personaAnalysis.facts, ...personaAnalysis.beliefs];
+         await historian.consolidateFacts(creatorId, allRawFacts, { type: 'youtube', url: item.url });
          
          // B. Audio Pipeline
          const rawPath = await audio.downloadAudio(item.url, creatorId);
@@ -291,6 +301,10 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
          const higgs = new HiggsService();
          const voiceId = await higgs.generateEmbedding(vocalsPath, creatorId);
          
+         // C. Populate Brain (RAG Ingestion)
+         const rag = new RAGService();
+         await rag.ingestContent(item.contentId!, textContext);
+
          return {
              ...personaAnalysis,
              voice: {
@@ -321,6 +335,16 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
          const processor = new TranscriptProcessor();
          const personaAnalysis = await processor.process(textToProcess);
 
+         // Vision: Get Image Description
+         const vision = new VisionService();
+         const imageDescription = await vision.describeImage(item.url); // item.url is the media_url for IG post
+         
+         const fullTextContext = `Caption: ${textToProcess}\nImage Description: ${imageDescription}`;
+
+         // Populate Brain (RAG Ingestion)
+         const rag = new RAGService();
+         await rag.ingestContent(item.contentId!, fullTextContext);
+
          // Persist Brain Extraction
          await prisma.personaProfile.upsert({
              where: { creatorId },
@@ -328,34 +352,35 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
                  creatorId,
                  tone: personaAnalysis.style.tone,
                  keywords: personaAnalysis.style.keywords,
-                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
              },
              update: {
                  tone: personaAnalysis.style.tone,
                  keywords: personaAnalysis.style.keywords,
-                 facts: [...personaAnalysis.facts, ...personaAnalysis.beliefs]
              }
          });
 
+         // Consolidate Facts (Historian)
+         const historian = new FactHistorian();
+         const allRawFacts = [...personaAnalysis.facts, ...personaAnalysis.beliefs];
+         await historian.consolidateFacts(creatorId, allRawFacts, { type: 'instagram', url: item.url });
+
         return { 
             status: "processed", 
-            analysis: "Text context extracted",
+            analysis: "Text and Vision context extracted",
             style: personaAnalysis.style, // Return style so Queue updates 'transcript' field
-            artifacts: { text: textToProcess }
+            artifacts: { text: textToProcess, vision: imageDescription }
         };
     }
 }
 
+
+
 export async function ingestionRoutes(fastify: FastifyInstance) {
+
   // Step 0: List Scanned Content
   fastify.get('/ingest/list', async (request, reply) => {
     try {
-        let user;
-        try {
-             user = await (request as any).jwtVerify() as { id: string };
-        } catch (e) {
-             return reply.code(401).send({ error: "Unauthorized" });
-        }
+        const user = await verifyUser(request);
         
         const items = await prisma.contentItem.findMany({
             where: { creatorId: user.id },
@@ -394,12 +419,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   // Step 1: Discover
   fastify.post('/ingest/discover', async (request, reply) => {
     try {
-        let user;
-        try {
-             user = await (request as any).jwtVerify() as { id: string };
-        } catch (e) {
-             return reply.code(401).send({ error: "Unauthorized" });
-        }
+        const user = await verifyUser(request);
         
         // We still parse body for platform/authCode, but overwrite creatorId
         const body = DiscoverySchema.omit({ creatorId: true }).parse(request.body);
@@ -477,12 +497,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   // Step 4: Delete Item
   fastify.delete('/ingest/item/:id', async (request, reply) => {
       try {
-        let user;
-        try {
-             user = await (request as any).jwtVerify() as { id: string };
-        } catch (e) {
-             return reply.code(401).send({ error: "Unauthorized" });
-        }
+        const user = await verifyUser(request);
 
         const { id } = z.object({ id: z.string() }).parse(request.params);
         
@@ -514,12 +529,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   // Batch Queue
   fastify.post('/ingest/batch/queue', async (request, reply) => {
       try {
-          let user;
-          try {
-               user = await (request as any).jwtVerify() as { id: string };
-          } catch (e) {
-               return reply.code(401).send({ error: "Unauthorized" });
-          }
+        const user = await verifyUser(request);
 
           const { ids } = z.object({ ids: z.array(z.string()) }).parse(request.body);
 
@@ -593,12 +603,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   // Batch Delete
   fastify.post('/ingest/batch/delete', async (request, reply) => {
       try {
-          let user;
-          try {
-               user = await (request as any).jwtVerify() as { id: string };
-          } catch (e) {
-               return reply.code(401).send({ error: "Unauthorized" });
-          }
+        const user = await verifyUser(request);
 
           const { ids } = z.object({ ids: z.array(z.string()) }).parse(request.body);
 
@@ -638,12 +643,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   fastify.delete('/ingest/reset', async (request, reply) => {
       console.log("[Reset] Resetting creator training data...");
       try {
-          let user;
-          try {
-               user = await (request as any).jwtVerify() as { id: string };
-          } catch (e) {
-               return reply.code(401).send({ error: "Unauthorized" });
-          }
+        const user = await verifyUser(request);
           
           const creatorId = user.id;
 
@@ -681,11 +681,10 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
   // Step 2: Parse (The Heavy Worker)
   fastify.post('/ingest/parse', async (request, reply) => {
     try {
-        let user;
-        try {
-             user = await (request as any).jwtVerify() as { id: string };
-        } catch (e) {
-             return reply.code(401).send({ error: "Unauthorized" });
+        const user = await verifyUser(request);
+
+        if (!isAdminUser(user)) {
+             return reply.code(403).send({ error: "Forbidden", message: "Parsing individual URLs is a dev-only feature." });
         }
 
         const body = ParseContentSchema.omit({ creatorId: true }).parse(request.body);
@@ -701,16 +700,111 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Step 5: Bio Research (Perplexity)
+  fastify.post('/ingest/bio', async (request, reply) => {
+    try {
+        const user = await verifyUser(request);
+
+        const body = z.object({ 
+            category: z.string(),
+            overrideName: z.string().optional() // Dev bypass
+        }).parse(request.body);
+        
+        // --- Security: Derive Identity from Connections ---
+        let creator;
+        if (process.env.ALLOW_TEST_AUTH === 'true' && user.email.includes('demo.com')) {
+            // Mock creator for testing if it doesn't exist
+            creator = await prisma.creator.findUnique({
+                where: { id: user.id },
+                include: { authConnections: true }
+            });
+            if (!creator) {
+                creator = { id: user.id, email: user.email, authConnections: [], virtual: true } as any;
+            }
+        } else {
+            creator = await prisma.creator.findUnique({
+                where: { id: user.id },
+                include: { authConnections: true }
+            });
+        }
+
+        if (!creator) return reply.code(404).send({ error: "Creator not found" });
+
+        let verifiedName = "";
+        const isAdmin = isAdminUser(creator);
+
+        if (isAdmin && body.overrideName) {
+            console.log(`[Bio Bypass] Admin ${creator.email} overriding name to: ${body.overrideName}`);
+            verifiedName = body.overrideName;
+        } else {
+            if (!creator.authConnections.length) {
+                return reply.code(403).send({ 
+                    error: "Identity Verification Failed", 
+                    message: "You must connect at least one platform (YouTube or Instagram) to verify your identity before bio research." 
+                });
+            }
+            
+            // Priority: YouTube Channel Name > Instagram Username
+            const ytConn = creator.authConnections.find((c: any) => c.platform === 'YOUTUBE');
+            const igConn = creator.authConnections.find((c: any) => c.platform === 'INSTAGRAM');
+
+            if (ytConn && ytConn.accessToken) {
+                const yt = new YouTubeService(ytConn.accessToken, ytConn.refreshToken || undefined);
+                const details = await yt.getChannelDetails();
+                verifiedName = details.title;
+            } else if (igConn && igConn.accessToken) {
+                const ig = new InstagramService();
+                verifiedName = await ig.getUsername(igConn.accessToken);
+            }
+        }
+
+        if (!verifiedName) {
+            return reply.code(403).send({ error: "Could not verify your platform identity." });
+        }
+
+        console.log(`[Bio Security] Researching verified identity: ${verifiedName}`);
+
+        const bioService = new BioService();
+        const backgroundStory = await bioService.researchCreator(verifiedName, body.category);
+
+        if (!(creator as any).virtual) {
+            const profile = await prisma.personaProfile.upsert({
+                where: { creatorId: user.id },
+                create: {
+                    creatorId: user.id,
+                    backgroundStory
+                },
+                update: {
+                    backgroundStory
+                }
+            });
+
+            // Historian: Distill background story into facts
+            const historian = new FactHistorian();
+            const distilledBioFacts = await historian.distillFacts(backgroundStory);
+            await historian.consolidateFacts(user.id, distilledBioFacts, { type: 'perplexity' });
+        }
+
+        return { status: 'success', backgroundStory };
+    } catch (e: any) {
+        console.error("[Bio Error]", e);
+        reply.code(500);
+        return { status: 'error', error: e.message || 'Bio research failed' };
+    }
+  });
+
 
   // Legacy (Keep for backward compatibility during migration if needed, or remove)
   // Re-mapping old /ingest/youtube to use parseContentItem internally for "Quick Link" mode
   fastify.post('/ingest/youtube', async (request, reply) => {
       try {
-        let user;
-        try {
-             user = await (request as any).jwtVerify() as { id: string };
-        } catch (e) {
-             return reply.code(401).send({ error: "Unauthorized" });
+        const user = await verifyUser(request);
+
+        if (!isAdminUser(user)) {
+            return reply.code(403).send({ 
+                error: "Forbidden", 
+                message: "Quick Link ingestion is now a dev-only feature. Please use the automated platform scan." 
+            });
         }
 
         const body = z.object({ url: z.string().url() }).parse(request.body);

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { WS_BASE_URL } from '@/lib/api'
 
 export function useAudioStream() {
   const [isConnected, setIsConnected] = useState(false)
@@ -14,7 +15,7 @@ export function useAudioStream() {
     if (socketRef.current?.readyState === WebSocket.OPEN) return
 
     // Connect to Node.js Gateway
-    const ws = new WebSocket('ws://localhost:8000/ws/audio')
+    const ws = new WebSocket(`${WS_BASE_URL}/ws/audio`)
     
     ws.onopen = () => {
       console.log('Connected to Audio Gateway')

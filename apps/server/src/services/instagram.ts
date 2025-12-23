@@ -44,11 +44,22 @@ export class InstagramService {
     const res = await fetch(url);
     
     if (!res.ok) {
-        const error = await res.json();
+        const error = await res.json() as any;
         throw new Error(`Instagram API Error: ${error.error?.message || res.statusText}`);
     }
 
-    const data = await res.json();
+    const data = await res.json() as any;
     return data.data || [];
+  }
+
+  async getUsername(accessToken: string): Promise<string> {
+    const url = `https://graph.instagram.com/me?fields=username&access_token=${accessToken}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+        const error = await res.json() as any;
+        throw new Error(`Instagram API Error: ${error.error?.message || res.statusText}`);
+    }
+    const data = await res.json() as any;
+    return data.username || "Unknown Instagram User";
   }
 }

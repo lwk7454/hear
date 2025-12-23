@@ -3,8 +3,12 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 const execAsync = promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export class AudioService {
   
@@ -14,14 +18,25 @@ export class AudioService {
   }
 
   private getAuthArgs(): string {
+      // Priority 1: Direct browser injection (best for local dev)
+      if (process.env.YOUTUBE_COOKIES_FROM_BROWSER) {
+          return `--cookies-from-browser ${process.env.YOUTUBE_COOKIES_FROM_BROWSER}`;
+      }
+
+      const serverRoot = path.resolve(__dirname, '../../');
       const paths = [
-          process.env.YOUTUBE_COOKIES_PATH, // 1st priority: Env Var
-          path.join(process.cwd(), 'cookies.txt'),
-          path.join(process.cwd(), 'apps/server/cookies.txt')
-      ].filter(p => p) as string[];
+          process.env.YOUTUBE_COOKIES_PATH 
+            ? (path.isAbsolute(process.env.YOUTUBE_COOKIES_PATH) 
+                ? process.env.YOUTUBE_COOKIES_PATH 
+                : path.join(serverRoot, process.env.YOUTUBE_COOKIES_PATH))
+            : null,
+          path.join(serverRoot, 'cookies.txt'),
+          path.join(process.cwd(), 'cookies.txt')
+      ].filter(Boolean) as string[];
 
       for (const p of paths) {
           if (fs.existsSync(p)) {
+               console.log(`[AudioService] Using cookies from: ${p}`);
                return `--cookies "${p}"`;
           }
       }
@@ -34,7 +49,8 @@ export class AudioService {
   async downloadAudio(url: string, creatorId: string): Promise<string> {
     console.log(`[AudioService] Downloading audio from ${url}...`);
     
-    const tmpDir = path.join(process.cwd(), 'tmp');
+    const serverRoot = path.resolve(__dirname, '../../');
+    const tmpDir = path.join(serverRoot, 'tmp');
     if (!fs.existsSync(tmpDir)) {
         fs.mkdirSync(tmpDir, { recursive: true });
     }
@@ -48,7 +64,11 @@ export class AudioService {
     }
 
     try {
-      const cmd = `yt-dlp ${this.getAuthArgs()} -f bestaudio -x --audio-format mp3 -o "${outputTemplate}" --no-check-certificates --no-warnings --prefer-free-formats "${url}"`;
+      // Simplify flags. Forcing specific clients often breaks format selection.
+      // We keep user-agent and referer as they are generally safe/helpful.
+      const robustFlags = `--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --referer "https://www.youtube.com/"`;
+      
+      const cmd = `yt-dlp ${this.getAuthArgs()} ${robustFlags} -f "bestaudio/best" -x --audio-format mp3 -o "${outputTemplate}" --no-check-certificates --no-warnings "${url}"`;
       await execAsync(cmd);
 
       if (!fs.existsSync(finalPath)) {
@@ -97,7 +117,8 @@ export class AudioService {
 
       try {
           // Increase buffer size for large JSON dumps
-          const cmd = `yt-dlp ${this.getAuthArgs()} --dump-json --no-check-certificates --no-warnings --prefer-free-formats "${url}"`;
+          const robustFlags = `--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --referer "https://www.youtube.com/"`;
+          const cmd = `yt-dlp ${this.getAuthArgs()} ${robustFlags} --dump-json --no-check-certificates --no-warnings "${url}"`;
           const { stdout } = await execAsync(cmd, { maxBuffer: 1024 * 1024 * 10 }); // 10MB buffer
           const data = JSON.parse(stdout);
           return {

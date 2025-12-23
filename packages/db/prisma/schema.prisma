@@ -56,13 +56,32 @@ model PersonaProfile {
   // Extracted "Mind"
   tone      String?  // "Sarcastic, Fast-paced"
   keywords  String[] // ["Tech", "Keyboards"]
-  facts     String[] // ["Hates brown switches", "Lives in SF"]
+  facts     PersonaFact[]
+  
+  backgroundStory String? @db.Text // Generated via Perplexity
   
   // Voice Config
   voiceTier String   @default("TIER_1") // TIER_1 (Embedding) | TIER_2 (LoRA)
   voiceRef  String?  // Path to embedding or LoRA adapter ID
 
   updatedAt DateTime @updatedAt
+}
+
+model PersonaFact {
+  id        String   @id @default(uuid())
+  profileId String
+  profile   PersonaProfile @relation(fields: [profileId], references: [id])
+
+  content   String   @db.Text
+  status    String   @default("ALLOWED") // ALLOWED, FORBIDDEN, EDITED
+  isManual  Boolean  @default(false)
+  
+  sourceMetadata Json? // { type: "youtube", id: "...", url: "..." }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 model ContentItem {
@@ -95,6 +114,8 @@ model ContentItem {
 
   // RAG Chunks
   embeddings  MemoryChunk[]
+
+  @@index([creatorId])
 }
 
 model Comment {
@@ -115,9 +136,11 @@ model MemoryChunk {
   contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
 
   content       String   @db.Text
-  embedding     Unsupported("vector(1536)")? // OpenAI/DeepSeek embedding size
-
+  embedding     Unsupported("vector(384)")? // Xenova/all-MiniLM-L6-v2 embedding size
+  importance    Int      @default(3) // 1-10 scale for RIR scoring
   createdAt     DateTime @default(now())
+
+  @@index([contentItemId])
 }
 
 // --- Chat & Connections ---

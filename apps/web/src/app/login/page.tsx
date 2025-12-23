@@ -3,11 +3,12 @@
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { API_BASE_URL } from "@/lib/api"
 
 export default function LoginPage() {
   const handleGoogleLogin = async () => {
     // Fetch Google Login URL from Backend
-    const res = await fetch('http://localhost:8000/auth/login/google');
+    const res = await fetch(`${API_BASE_URL}/auth/login/google`);
     const { url } = await res.json();
     window.location.href = url;
   }

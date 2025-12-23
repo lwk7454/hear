@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { Play, Pause, Loader2, Send, Mic } from "lucide-react"
+import { API_BASE_URL } from "@/lib/api"
 
 interface TwinTestSectionProps {
   creatorId: string,
@@ -21,13 +22,13 @@ interface Message {
 }
 
 export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps) {
-    const [messages, setMessages] = useState<Message[]>([
-        { role: 'assistant', text: "Hello! I'm your digital twin. Test my voice here." }
-    ])
+    const [messages, setMessages] = useState<Message[]>([])
     const [inputText, setInputText] = useState("")
     const [ttsText, setTtsText] = useState("")
     const [isLoading, setIsLoading] = useState(false)
     const [playingUrl, setPlayingUrl] = useState<string | null>(null)
+    
+    const [autoVoice, setAutoVoice] = useState(true)
     
     // Audio Player Ref
     const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -92,7 +93,7 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
     // Load History
     useEffect(() => {
         if (!creatorId) return;
-        fetch(`http://localhost:8000/chat/history?creatorId=${creatorId}`, { credentials: 'include' })
+        fetch(`${API_BASE_URL}/chat/history?creatorId=${creatorId}`, { credentials: 'include' })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success' && data.messages.length > 0) {
@@ -105,7 +106,7 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
     const handleClearChat = async () => {
          if (!confirm("Clear chat history?")) return;
          try {
-             await fetch(`http://localhost:8000/chat/history?creatorId=${creatorId}`, { method: 'DELETE', credentials: 'include' });
+             await fetch(`${API_BASE_URL}/chat/history?creatorId=${creatorId}`, { method: 'DELETE', credentials: 'include' });
              setMessages([]);
              toast.success("Chat history cleared");
          } catch (e) {
@@ -126,11 +127,15 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
         setIsLoading(true)
 
         try {
-            const res = await fetch('http://localhost:8000/chat/text', {
+            const res = await fetch(`${API_BASE_URL}/chat/text`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ text: userMsg.text, creatorId })
+                body: JSON.stringify({ 
+                    text: userMsg.text, 
+                    creatorId,
+                    autoTts: autoVoice
+                })
             })
             const data = await res.json()
             
@@ -143,7 +148,7 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
                 setMessages(prev => [...prev, aiMsg])
                 
                 // Auto-play
-                if (data.audioUrl) {
+                if (data.audioUrl && autoVoice) {
                     playAudio(data.audioUrl)
                 }
             } else {
@@ -166,7 +171,7 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
 
         setIsLoading(true)
         try {
-            const res = await fetch('http://localhost:8000/chat/tts', {
+            const res = await fetch(`${API_BASE_URL}/chat/tts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
@@ -190,8 +195,24 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
     return (
         <Card className="flex flex-col h-[600px]">
             <CardHeader>
-                <CardTitle>Test Your Twin</CardTitle>
-                <CardDescription>Verify your cloned voice model in different scenarios.</CardDescription>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <CardTitle>Test Your Twin</CardTitle>
+                        <CardDescription>Verify your cloned voice model in different scenarios.</CardDescription>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-lg border">
+                        <label className="text-xs font-medium cursor-pointer" htmlFor="auto-voice-toggle">
+                            Auto Voice
+                        </label>
+                        <input 
+                            type="checkbox" 
+                            id="auto-voice-toggle"
+                            className="w-4 h-4 cursor-pointer accent-primary" 
+                            checked={autoVoice}
+                            onChange={(e) => setAutoVoice(e.target.checked)}
+                        />
+                    </div>
+                </div>
             </CardHeader>
             <CardContent className="flex-1 p-0 overflow-hidden">
                 <Tabs defaultValue="chat" className="flex flex-col h-full">
@@ -208,7 +229,7 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
                                     Clear Chat History
                                 </Button>
                           </div>
-                         <div className="flex-1 pr-4 mb-4 overflow-y-auto">
+                         <div className="flex-1 pr-4 mb-4 overflow-y-auto min-h-0">
                             <div className="space-y-4">
                                 {messages.map((m, i) => (
                                     <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -242,7 +263,7 @@ export function TwinTestSection({ creatorId, isEnrolled }: TwinTestSectionProps)
                                 )}
                             </div>
                          </div>
-                         <div className="flex gap-2">
+                         <div className="flex gap-2 mt-auto">
                              <Input 
                                 placeholder="Say something..." 
                                 value={inputText}

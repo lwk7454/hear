@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { TwinTestSection } from "@/components/twin-test-section"
+import { API_BASE_URL } from "@/lib/api"
 
 export default function TwinPage() {
     const [creatorId, setCreatorId] = useState<string | null>(null)
@@ -11,8 +12,8 @@ export default function TwinPage() {
     useEffect(() => {
         // Fetch User & Voice Status
         Promise.all([
-            fetch('http://localhost:8000/auth/me', { credentials: 'include' }).then(r => r.json()),
-            fetch('http://localhost:8000/voice/status', { credentials: 'include' }).then(r => r.json())
+            fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' }).then(r => r.json()),
+            fetch(`${API_BASE_URL}/voice/status`, { credentials: 'include' }).then(r => r.json())
         ]).then(([authData, voiceData]) => {
             if (authData.authenticated && authData.creator) {
                 setCreatorId(authData.creator.id)

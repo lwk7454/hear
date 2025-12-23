@@ -11,6 +11,7 @@ import { GLMVoiceClient } from './glm-voice-client'
 import { ingestionRoutes } from './ingestion'
 import { voiceRoutes } from './routes/voice'
 import { chatRoutes } from './routes/chat'
+import { factRoutes } from './routes/facts'
 import { RealTimeVAD } from "@ericedouard/vad-node-realtime"
 
 const server: FastifyInstance = Fastify({
@@ -40,7 +41,7 @@ const start = async () => {
     await server.register(cors, { 
       origin: allowedOrigins,
       credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
     }) // Enable cookies
     await server.register(fastifyMultipart, {
       limits: {
@@ -66,6 +67,7 @@ const start = async () => {
     server.register(ingestionRoutes)
     server.register(voiceRoutes)
     server.register(chatRoutes)
+    server.register(factRoutes)
 
     // 3. Register WebSocket Endpoint
     server.register(async function (fastify) {

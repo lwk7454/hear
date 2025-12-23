@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { google } from 'googleapis';
 import { prisma } from '../lib/db';
 import { z } from 'zod';
+import { isAdminUser, verifyUser } from '../lib/auth';
 
 const OAuthUrlSchema = z.object({
   creatorId: z.string().optional(), // Optional if logged in
@@ -30,9 +31,15 @@ export async function authRoutes(fastify: FastifyInstance) {
   // --- Session Check ---
   fastify.get('/auth/me', async (request, reply) => {
     try {
-        const data = await (request as any).jwtVerify() as { id: string, email: string };
+        const data = await verifyUser(request);
         const creator = await prisma.creator.findUnique({ where: { id: data.id } });
-        return { authenticated: true, creator };
+        if (!creator) throw new Error("Not found");
+        
+        return { 
+            authenticated: true, 
+            creator,
+            isAdmin: isAdminUser(creator)
+        };
     } catch (e) {
         return { authenticated: false };
     }

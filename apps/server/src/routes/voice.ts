@@ -4,6 +4,7 @@ import { storageService } from '../services/storage'
 import fs from 'fs'
 import path from 'path'
 import { pipeline } from 'stream/promises'
+import { verifyUser } from '../lib/auth'
 
 // Ensure storage directory exists
 const VOICE_STORAGE_DIR = path.resolve(__dirname, '../../storage/voice_samples');
@@ -15,12 +16,7 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     
     fastify.post('/voice/enroll', async (request, reply) => {
         try {
-            let user;
-            try {
-                 user = await (request as any).jwtVerify() as { id: string };
-            } catch (e) {
-                 return reply.code(401).send({ error: "Unauthorized" });
-            }
+            const user = await verifyUser(request);
 
             const data = await request.file();
             if (!data) {
@@ -59,12 +55,7 @@ export async function voiceRoutes(fastify: FastifyInstance) {
 
     fastify.get('/voice/status', async (request, reply) => {
         try {
-            let user;
-            try {
-                 user = await (request as any).jwtVerify() as { id: string };
-            } catch (e) {
-                 return reply.code(401).send({ error: "Unauthorized" });
-            }
+            const user = await verifyUser(request);
 
             const creator = await prisma.creator.findUnique({
                 where: { id: user.id },

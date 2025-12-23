@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { LayoutDashboard, MessageSquareText, LogOut, Settings } from "lucide-react"
+import { API_BASE_URL } from "@/lib/api"
 
 export function CreatorNav() {
   const pathname = usePathname()
@@ -53,7 +54,7 @@ export function CreatorNav() {
             className="text-muted-foreground hover:text-foreground gap-2"
             onClick={async () => {
                   try {
-                    await fetch('http://localhost:8000/auth/logout', { method: 'POST', credentials: 'include' });
+                    await fetch(`${API_BASE_URL}/auth/logout`, { method: 'POST', credentials: 'include' });
                   } catch (e) {
                       console.error("Logout failed", e)
                   }

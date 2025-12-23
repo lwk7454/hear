@@ -45,3 +45,4 @@ supabase/
 tmp/
 venv/
 models/
+dist/

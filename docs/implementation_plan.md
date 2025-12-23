@@ -1,3 +1,6 @@
+#- [x] Create Implementation Plan
+- [/] Refine Chunking & Retrieval Strategy
+- [x] Get User Approval
 # Implementation Plan - Project Hear
 
 ## Goal Description

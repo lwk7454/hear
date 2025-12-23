@@ -19,15 +19,19 @@ export class YouTubeService {
   }
 
   /**
-   * Get the authenticated user's channel ID
+   * Get the authenticated user's channel details
    */
-  async getChannelID(): Promise<string> {
+  async getChannelDetails(): Promise<{ id: string, title: string }> {
       const res = await this.youtube.channels.list({
-          part: ['id'],
+          part: ['id', 'snippet'],
           mine: true
       });
-      if (!res.data.items?.length) throw new Error("No channel found for this user");
-      return res.data.items[0].id!;
+      const item = res.data.items?.[0];
+      if (!item || !item.id) throw new Error("No channel found for this user");
+      return {
+          id: item.id,
+          title: item.snippet?.title || "Unknown Channel"
+      };
   }
 
   /**
