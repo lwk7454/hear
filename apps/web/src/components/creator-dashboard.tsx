@@ -20,123 +20,126 @@ export function CreatorDashboard() {
   const [creator, setCreator] = useState<any>(null)
   const [bioName, setBioName] = useState('')
   const [bioCategory, setBioCategory] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
+  const [voiceYoutubeUrl, setVoiceYoutubeUrl] = useState('')
   const searchParams = useSearchParams()
   const router = useRouter()
 
   const refreshVideos = () => {
     fetch(`${API_BASE_URL}/ingest/list`, { credentials: 'include' })
-        .then(r => r.json())
-        .then(json => {
-            if (json.status === 'success') {
-                // Sort by date desc if needed, or rely on backend
-                setVideos(json.data.items || []);
-            }
-        })
-        .catch(e => console.error("Failed to load items", e));
+      .then(r => r.json())
+      .then(json => {
+        if (json.status === 'success') {
+          // Sort by date desc if needed, or rely on backend
+          setVideos(json.data.items || []);
+        }
+      })
+      .catch(e => console.error("Failed to load items", e));
   }
-  
+
   // Check Session & Fetch Data
   useEffect(() => {
     fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            if (!data.authenticated) {
-                window.location.href = '/login';
-            } else {
-                setCreator(data.creator)
-                setIsAdmin(!!data.isAdmin)
-                // Fetch existing videos
-                refreshVideos();
-                
-                // Fetch Voice Status
-                fetch(`${API_BASE_URL}/voice/status`, { credentials: 'include' })
-                    .then(r => r.json())
-                    .then(json => {
-                        if (json.status === 'success' && json.enrolled) {
-                            setIsEnrolled(true);
-                        }
-                    })
-                    .catch(e => console.error("Failed to voice status", e));
-            }
-        })
-        .catch(() => window.location.href = '/login');
+      .then(res => res.json())
+      .then(data => {
+        if (!data.authenticated) {
+          window.location.href = '/login';
+        } else {
+          setCreator(data.creator)
+          setIsAdmin(!!data.isAdmin)
+          // Fetch existing videos
+          refreshVideos();
+
+          // Fetch Voice Status
+          fetch(`${API_BASE_URL}/voice/status`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(json => {
+              if (json.status === 'success' && json.enrolled) {
+                setIsEnrolled(true);
+              }
+            })
+            .catch(e => console.error("Failed to voice status", e));
+        }
+      })
+      .catch(() => window.location.href = '/login');
   }, []);
 
-  const handleVoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!e.target.files?.[0]) return;
-      
-      const file = e.target.files[0];
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      try {
-          // Optimistic
-          setStatus('processing');
-          const res = await fetch(`${API_BASE_URL}/voice/enroll`, {
-              method: 'POST',
-              credentials: 'include',
-              body: formData // No Content-Type header, browser sets it with boundary
-          });
-          const json = await res.json();
-          if (json.status === 'success') {
-              setIsEnrolled(true);
-              toast.success("Voice Enrolled Successfully!");
-          } else {
-              toast.error("Failed: " + json.error);
-          }
-      } catch (e) {
-          console.error(e);
-          toast.error("Error uploading voice");
-      } finally {
-          setStatus('idle');
+
+  const handleVoiceYoutubeEnroll = async () => {
+    if (!voiceYoutubeUrl) return;
+
+    try {
+      setStatus('processing');
+      const res = await fetch(`${API_BASE_URL}/voice/enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ youtubeUrl: voiceYoutubeUrl })
+      });
+      const json = await res.json();
+
+      if (res.status === 202) {
+        setVoiceYoutubeUrl('');
+        setStatus('idle');
+        toast.success("Enrollment started in background. Please refresh the page in a few minutes.");
+      } else if (json.status === 'success') {
+        setIsEnrolled(true);
+        setVoiceYoutubeUrl('');
+        setStatus('idle');
+        toast.success("Voice Enrollment Completed!");
+      } else {
+        setStatus('idle');
+        toast.error("Failed: " + json.error);
       }
+    } catch (e) {
+      console.error(e);
+      setStatus('idle');
+      toast.error("Error enrolling via YouTube");
+    }
   }
 
   // Handle OAuth Callback Success
   useEffect(() => {
     const connected = searchParams.get('connected')
     if (connected) {
-        setStatus('processing')
-        // Trigger Discovery
-        fetch(`${API_BASE_URL}/ingest/discover`, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ 
-                platform: connected, 
-                // authCode not needed as token is in DB now
-            })
+      setStatus('processing')
+      // Trigger Discovery
+      fetch(`${API_BASE_URL}/ingest/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          platform: connected,
+          // authCode not needed as token is in DB now
         })
+      })
         .then(res => res.json())
         .then(json => {
-            if (json.status === 'success') {
-                setVideos(json.data.items || [])
-                setStatus('ready')
-                router.replace('/creator')
-            }
+          if (json.status === 'success') {
+            setVideos(json.data.items || [])
+            setStatus('ready')
+            router.replace('/creator')
+          }
         })
         .catch(e => {
-            console.error(e)
-            setStatus('idle')
+          console.error(e)
+          setStatus('idle')
         })
     }
   }, [searchParams, router])
 
   const handleQueueParams = async (id: string) => {
-      // Optimistic Update
-      setVideos((prev: any[]) => prev.map((v: any) => v.id === id ? { ...v, status: 'PROCESSING' } : v))
-      
-      try {
-          await fetch(`${API_BASE_URL}/ingest/queue/${id}`, { method: 'POST', credentials: 'include' });
-          // Poll or wait for websocket in future. For now, just set to COMPLETED after a timeout? 
-          // Actually, let's keep it processing until reload or polling impl.
-          // Triggering a re-fetch of the list would be ideal but lightweight for now.
-      } catch (e) {
-          console.error(e);
-          setVideos((prev: any[]) => prev.map((v: any) => v.id === id ? { ...v, status: 'FAILED' } : v))
-      }
+    // Optimistic Update
+    setVideos((prev: any[]) => prev.map((v: any) => v.id === id ? { ...v, status: 'PROCESSING' } : v))
+
+    try {
+      await fetch(`${API_BASE_URL}/ingest/queue/${id}`, { method: 'POST', credentials: 'include' });
+      // Poll or wait for websocket in future. For now, just set to COMPLETED after a timeout? 
+      // Actually, let's keep it processing until reload or polling impl.
+      // Triggering a re-fetch of the list would be ideal but lightweight for now.
+    } catch (e) {
+      console.error(e);
+      setVideos((prev: any[]) => prev.map((v: any) => v.id === id ? { ...v, status: 'FAILED' } : v))
+    }
   }
 
   const handleIngest = async () => {
@@ -150,13 +153,13 @@ export function CreatorDashboard() {
         body: JSON.stringify({ url })
       })
       const json = await res.json()
-      
+
       if (['success', 'queued', 'exists'].includes(json.status)) {
         if (json.status === 'exists') {
-             toast.info("This video is already in your library.");
+          toast.info("This video is already in your library.");
         } else {
-             refreshVideos();
-             toast.success("Video added to queue!");
+          refreshVideos();
+          toast.success("Video added to queue!");
         }
         setUrl('');
         setStatus('ready')
@@ -171,89 +174,89 @@ export function CreatorDashboard() {
   }
 
   const handleDelete = async (id: string) => {
-      if (!confirm("Are you sure? This will delete all data for this item.")) return;
-       setVideos(prev => prev.filter(v => v.id !== id));
-       try {
-           const res = await fetch(`${API_BASE_URL}/ingest/item/${id}`, { method: 'DELETE', credentials: 'include' });
-           if (!res.ok) throw new Error("Delete failed");
-       } catch (e) {
-           console.error(e);
-       }
+    if (!confirm("Are you sure? This will delete all data for this item.")) return;
+    setVideos(prev => prev.filter(v => v.id !== id));
+    try {
+      const res = await fetch(`${API_BASE_URL}/ingest/item/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error("Delete failed");
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const toggleSelection = (id: string) => {
-      const newSet = new Set(selectedIds)
-      if (newSet.has(id)) {
-          newSet.delete(id)
-      } else {
-          newSet.add(id)
-      }
-      setSelectedIds(newSet)
+    const newSet = new Set(selectedIds)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    setSelectedIds(newSet)
   }
 
   const toggleSelectAll = () => {
-      if (selectedIds.size === videos.length) {
-          setSelectedIds(new Set())
-      } else {
-          setSelectedIds(new Set(videos.map(v => v.id)))
-      }
+    if (selectedIds.size === videos.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(videos.map(v => v.id)))
+    }
   }
 
   const handleBatchIngest = async () => {
-      if (selectedIds.size === 0) return;
-      setStatus('processing')
-      try {
-          const res = await fetch(`${API_BASE_URL}/ingest/batch/queue`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ ids: Array.from(selectedIds) })
-          });
-          const json = await res.json();
-          if (json.status === 'success') {
-              toast.success(json.msg || "Batch started");
-              // Optimistic update
-              setVideos(prev => prev.map(v => selectedIds.has(v.id) ? { ...v, status: 'PROCESSING' } : v));
-              setSelectedIds(new Set()); // Clear selection
-          } else {
-              toast.error(json.error || "Batch failed");
-          }
-      } catch (e) {
-          console.error(e);
-          toast.error("Batch ingest error");
-      } finally {
-          setStatus('ready')
+    if (selectedIds.size === 0) return;
+    setStatus('processing')
+    try {
+      const res = await fetch(`${API_BASE_URL}/ingest/batch/queue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ids: Array.from(selectedIds) })
+      });
+      const json = await res.json();
+      if (json.status === 'success') {
+        toast.success(json.msg || "Batch started");
+        // Optimistic update
+        setVideos(prev => prev.map(v => selectedIds.has(v.id) ? { ...v, status: 'PROCESSING' } : v));
+        setSelectedIds(new Set()); // Clear selection
+      } else {
+        toast.error(json.error || "Batch failed");
       }
+    } catch (e) {
+      console.error(e);
+      toast.error("Batch ingest error");
+    } finally {
+      setStatus('ready')
+    }
   }
 
   const handleBatchDelete = async () => {
-      if (selectedIds.size === 0) return;
-      if (!confirm(`Are you sure you want to delete ${selectedIds.size} items?`)) return;
-      
-      setStatus('processing')
-      try {
-          const res = await fetch(`${API_BASE_URL}/ingest/batch/delete`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({ ids: Array.from(selectedIds) })
-          });
-          const json = await res.json();
-          if (json.status === 'success') {
-              toast.success(`Deleted ${json.count} items`);
-              setVideos(prev => prev.filter(v => !selectedIds.has(v.id)));
-              setSelectedIds(new Set());
-          } else {
-               toast.error(json.error || "Batch delete failed");
-          }
-      } catch (e) {
-          console.error(e);
-          toast.error("Batch delete error");
-      } finally {
-          setStatus('ready')
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedIds.size} items?`)) return;
+
+    setStatus('processing')
+    try {
+      const res = await fetch(`${API_BASE_URL}/ingest/batch/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ids: Array.from(selectedIds) })
+      });
+      const json = await res.json();
+      if (json.status === 'success') {
+        toast.success(`Deleted ${json.count} items`);
+        setVideos(prev => prev.filter(v => !selectedIds.has(v.id)));
+        setSelectedIds(new Set());
+      } else {
+        toast.error(json.error || "Batch delete failed");
       }
+    } catch (e) {
+      console.error(e);
+      toast.error("Batch delete error");
+    } finally {
+      setStatus('ready')
+    }
   }
 
   return (
@@ -291,17 +294,22 @@ export function CreatorDashboard() {
                     </div>
                     {!isEnrolled && (
                       <p className="text-xs text-muted-foreground">
-                        Upload a 10s recording of your voice to filter ingested content.
+                        Provide a YouTube link of your voice (1-2 mins of clear speech) to enroll.
                       </p>
                     )}
-                    <div className="grid w-full max-w-sm items-center gap-1.5">
-                      <Input 
-                        ref={fileInputRef}
-                        type="file" 
-                        accept="audio/*" 
-                        onChange={handleVoiceUpload}
-                        disabled={status === 'processing'}
-                      />
+                    <div className="space-y-4">
+                      <div className="grid w-full max-w-sm items-center gap-1.5">
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground">YouTube URL</label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="https://youtube.com/watch?v=..."
+                            value={voiceYoutubeUrl}
+                            onChange={(e) => setVoiceYoutubeUrl(e.target.value)}
+                            disabled={status === 'processing'}
+                          />
+                          <Button size="sm" onClick={handleVoiceYoutubeEnroll} disabled={status === 'processing' || !voiceYoutubeUrl}>Enroll</Button>
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -313,20 +321,20 @@ export function CreatorDashboard() {
                     <CardDescription>Connect platforms to scan.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <Button variant="outline" className="w-full justify-start gap-2" 
+                    <Button variant="outline" className="w-full justify-start gap-2"
                       disabled={!isEnrolled}
                       onClick={async () => {
-                        const res = await fetch(`${API_BASE_URL}/auth/youtube/url`, { method: 'GET', headers: { 'Accept': 'application/json' } , credentials: 'include' });
+                        const res = await fetch(`${API_BASE_URL}/auth/youtube/url`, { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' });
                         if (res.status === 401) { window.location.href = '/login'; return; }
                         const { url } = await res.json();
                         window.location.href = url;
                       }}
                     >
-                      <img src="/assets/youtube.svg" className="w-5 h-5" alt="YT"/>
+                      <img src="/assets/youtube.svg" className="w-5 h-5" alt="YT" />
                       Connect YouTube
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full justify-start gap-2"
                       disabled={!isEnrolled}
                       onClick={async () => {
@@ -339,7 +347,7 @@ export function CreatorDashboard() {
                         window.location.href = url;
                       }}
                     >
-                      <img src="/assets/instagram.svg" className="w-5 h-5" alt="IG"/>
+                      <img src="/assets/instagram.svg" className="w-5 h-5" alt="IG" />
                       Connect Instagram
                     </Button>
                   </CardContent>
@@ -352,8 +360,8 @@ export function CreatorDashboard() {
                     <CardDescription>Irreversible actions.</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Button 
-                      variant="destructive" 
+                    <Button
+                      variant="destructive"
                       className="w-full"
                       onClick={async () => {
                         if (!confirm("Are you ABSOLUTELY sure? This will delete ALL your training data, library items, and digital twin memory. This cannot be undone.")) return;
@@ -387,8 +395,8 @@ export function CreatorDashboard() {
                   <h3 className="text-xl font-semibold">Library ({videos.length})</h3>
                   {videos.length > 0 && (
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                         checked={videos.length > 0 && selectedIds.size === videos.length}
                         onChange={toggleSelectAll}
@@ -419,7 +427,7 @@ export function CreatorDashboard() {
                   {videos.map((video) => (
                     <Card key={video.id} className={`overflow-hidden flex flex-col sm:flex-row transition-colors ${selectedIds.has(video.id) ? 'border-primary/50 bg-accent/5' : ''}`}>
                       <div className="p-2 flex items-start justify-center">
-                        <input 
+                        <input
                           type="checkbox"
                           className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary mt-2 ml-2"
                           checked={selectedIds.has(video.id)}
@@ -428,7 +436,7 @@ export function CreatorDashboard() {
                       </div>
                       <div className="sm:w-48 h-32 bg-muted relative shrink-0">
                         {video.thumbnail ? (
-                          <img src={video.thumbnail} className="w-full h-full object-cover" alt={video.title}/>
+                          <img src={video.thumbnail} className="w-full h-full object-cover" alt={video.title} />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-muted-foreground">No Thumb</div>
                         )}
@@ -450,11 +458,10 @@ export function CreatorDashboard() {
                           </div>
                         </div>
                         <div className="mt-4 flex items-center justify-between">
-                          <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${
-                            video.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                          <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${video.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
                             video.status === 'PROCESSING' ? 'bg-blue-100 text-blue-700' :
-                            'bg-gray-100 text-gray-500'
-                          }`}>
+                              'bg-gray-100 text-gray-500'
+                            }`}>
                             {video.status || 'PENDING'}
                           </span>
                           <div className="flex gap-2">
@@ -504,78 +511,78 @@ export function CreatorDashboard() {
                   </Card>
 
                   <Card>
-                <CardHeader>
-                  <CardTitle>Manual Ingestion</CardTitle>
-                  <CardDescription>Bypass automated scans and ingest any URL directly.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Input placeholder="https://youtube.com/..." value={url} onChange={(e) => setUrl(e.target.value)} />
-                  <Button onClick={handleIngest} disabled={status === 'processing' || !url} className="w-full">Ingest URL</Button>
-                </CardContent>
-              </Card>
+                    <CardHeader>
+                      <CardTitle>Manual Ingestion</CardTitle>
+                      <CardDescription>Bypass automated scans and ingest any URL directly.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Input placeholder="https://youtube.com/..." value={url} onChange={(e) => setUrl(e.target.value)} />
+                      <Button onClick={handleIngest} disabled={status === 'processing' || !url} className="w-full">Ingest URL</Button>
+                    </CardContent>
+                  </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Platform Rescan</CardTitle>
-                  <CardDescription>Manually trigger a content scan for a connected platform.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      className="flex-1 gap-2"
-                      onClick={() => {
-                        setStatus('processing');
-                        fetch(`${API_BASE_URL}/ingest/discover`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          credentials: 'include',
-                          body: JSON.stringify({ platform: 'youtube' })
-                        })
-                        .then(r => r.json())
-                        .then(json => {
-                          if (json.status === 'success') {
-                            toast.success("YouTube scan completed!");
-                            refreshVideos();
-                          } else {
-                            toast.error(json.error || "Scan failed");
-                          }
-                        })
-                        .finally(() => setStatus('idle'));
-                      }}
-                    >
-                      <img src="/assets/youtube.svg" className="w-4 h-4" alt="YT"/>
-                      Scan YouTube
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="flex-1 gap-2"
-                      onClick={() => {
-                        setStatus('processing');
-                        fetch(`${API_BASE_URL}/ingest/discover`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          credentials: 'include',
-                          body: JSON.stringify({ platform: 'instagram' })
-                        })
-                        .then(r => r.json())
-                        .then(json => {
-                          if (json.status === 'success') {
-                            toast.success("Instagram scan completed!");
-                            refreshVideos();
-                          } else {
-                            toast.error(json.error || "Scan failed");
-                          }
-                        })
-                        .finally(() => setStatus('idle'));
-                      }}
-                    >
-                      <img src="/assets/instagram.svg" className="w-4 h-4" alt="IG"/>
-                      Scan Instagram
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Platform Rescan</CardTitle>
+                      <CardDescription>Manually trigger a content scan for a connected platform.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          className="flex-1 gap-2"
+                          onClick={() => {
+                            setStatus('processing');
+                            fetch(`${API_BASE_URL}/ingest/discover`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              credentials: 'include',
+                              body: JSON.stringify({ platform: 'youtube' })
+                            })
+                              .then(r => r.json())
+                              .then(json => {
+                                if (json.status === 'success') {
+                                  toast.success("YouTube scan completed!");
+                                  refreshVideos();
+                                } else {
+                                  toast.error(json.error || "Scan failed");
+                                }
+                              })
+                              .finally(() => setStatus('idle'));
+                          }}
+                        >
+                          <img src="/assets/youtube.svg" className="w-4 h-4" alt="YT" />
+                          Scan YouTube
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex-1 gap-2"
+                          onClick={() => {
+                            setStatus('processing');
+                            fetch(`${API_BASE_URL}/ingest/discover`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              credentials: 'include',
+                              body: JSON.stringify({ platform: 'instagram' })
+                            })
+                              .then(r => r.json())
+                              .then(json => {
+                                if (json.status === 'success') {
+                                  toast.success("Instagram scan completed!");
+                                  refreshVideos();
+                                } else {
+                                  toast.error(json.error || "Scan failed");
+                                }
+                              })
+                              .finally(() => setStatus('idle'));
+                          }}
+                        >
+                          <img src="/assets/instagram.svg" className="w-4 h-4" alt="IG" />
+                          Scan Instagram
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
 
                 <div className="space-y-6">
@@ -618,8 +625,8 @@ export function CreatorDashboard() {
                       <CardDescription>Quick actions for local development.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                       <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>Force Hard Reload</Button>
-                       <Button variant="outline" className="w-full" onClick={() => console.log({ videos, creator, isAdmin })}>Log Current State to Console</Button>
+                      <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>Force Hard Reload</Button>
+                      <Button variant="outline" className="w-full" onClick={() => console.log({ videos, creator, isAdmin })}>Log Current State to Console</Button>
                     </CardContent>
                   </Card>
                 </div>

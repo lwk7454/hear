@@ -21,8 +21,8 @@ router = APIRouter()
 async def chat_generate(req: ChatGenerateRequest):
     """
     Full Context Chat Generation.
-    1. Loads Voice Cache (.pt).
-    2. Generates Audio.
+    1. Loads Voice Cache (.pt) and Transcript.
+    2. Generates Audio using in-context cloning.
     3. Saves Context to Supabase (Fan, Session, Messages).
     4. Uploads Compressed Output.
     """
@@ -35,10 +35,9 @@ async def chat_generate(req: ChatGenerateRequest):
 
     print(f"--> Chat Gen for {req.creator_id} (Fan: {req.fan_id})")
     
-    # 1. Load Cache (Lazy Load / Hydrate)
-    # Ignores req.voice_id path and looks up by creator_id
+    # 1. Load Cache & Transcript
     try:
-        cache_path = ensure_voice_cache(req.creator_id, engine.serve_engine)
+        cache_path, transcript = ensure_voice_cache(req.creator_id, engine.serve_engine)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -50,53 +49,35 @@ async def chat_generate(req: ChatGenerateRequest):
     
     cached_tokens = torch.load(str(cache_path), weights_only=True)
     
-    system_prompt = "You are a helpful assistant. Respond with voice."
-    messages = [engine.Message(role="system", content=system_prompt)]
-    
-    for msg in req.history:
-        role = msg.get("role", "user")
-        if role == "user": messages.append(engine.Message(role="user", content=msg.get("content")))
-        elif role == "assistant": messages.append(engine.Message(role="assistant", content=msg.get("content")))
-            
-    messages.append(engine.Message(role="user", content=req.text))
-    
     out_wav = None
     try:
-        # 3. Generate (Fast Path)
-        audio_numpy, sr = engine.serve_engine.generate_with_cache(
-            chat_ml_sample=engine.ChatMLSample(messages=messages),
-            cached_audio_ids=cached_tokens,
+        # 2. Generate (In-Context Cloning)
+        audio_numpy, sr = engine.serve_engine.generate_with_voice(
+            text_prompt=req.text,
+            voice_audio_ids=cached_tokens,
+            voice_transcript=transcript,
             max_new_tokens=2048
         )
         
         if audio_numpy is None:
              raise HTTPException(500, "Generation produced no audio")
              
-        # 4. Process Output (Temp File)
-        # Use tempfile directory instead of local output/ folder
+        # 3. Process Output (Temp File)
         tf = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tf.close() # Close immediately to avoid file lock on Windows
+        tf.close() 
         out_wav = Path(tf.name)
-        out_id = uuid.uuid4().hex # Needed for storage path
-        start_time = time.time()
-        
-        tensor = torch.from_numpy(audio_numpy)[None, :]
+        out_id = uuid.uuid4().hex 
         
         import soundfile as sf
         sf.write(str(out_wav), audio_numpy, sr)
         
-        # 5. Persistence & Compression
+        # 4. Persistence & Compression
         public_url = ""
-        # 5a. Ensure Fan & Session
-        # Simple check/create logic
+        # 4a. Ensure Fan & Session
         sess_res = supabase.table("ChatSession").select("id").eq("fanId", req.fan_id).eq("creatorId", req.creator_id).execute()
         if sess_res.data:
             session_id = sess_res.data[0]['id']
         else:
-            # Create Fan if not exists (Basic check)
-            # Assuming Fan exists or we auto-create fan? 
-            # Let's assume Fan exists for now or try insert fan then session.
-            # Just insert Session.
             new_sess = supabase.table("ChatSession").insert({
                 "id": str(uuid.uuid4()),
                 "fanId": req.fan_id, 
@@ -105,7 +86,7 @@ async def chat_generate(req: ChatGenerateRequest):
             }).execute()
             session_id = new_sess.data[0]['id']
 
-        # 5b. Save User Message
+        # 4b. Save User Message
         supabase.table("Message").insert({
             "id": str(uuid.uuid4()),
             "chatSessionId": session_id,
@@ -114,49 +95,40 @@ async def chat_generate(req: ChatGenerateRequest):
             "createdAt": datetime.utcnow().isoformat()
         }).execute()
         
-        # 5c. Compress & Upload Audio (Assistant)
-        mp3_buffer = compress_audio(str(out_wav), bitrate="64k") # Good for speech
+        # 4c. Compress & Upload Audio (Assistant)
+        mp3_buffer = compress_audio(str(out_wav), bitrate="64k") 
         storage_path = f"chat/{session_id}/{out_id}.mp3"
         
         content_type = "audio/mpeg"
-        sample = mp3_buffer.getvalue()[:4]
-        if sample.startswith(b'RIFF'):
-             content_type = "audio/wav"
-             storage_path = storage_path.replace(".mp3", ".wav")
         
-        supabase.storage.from_("creator-assets").upload(
+        supabase.storage.from_("audio").upload(
             storage_path, mp3_buffer.read(),
             file_options={"content-type": content_type}
         )
         
-        signed_res = supabase.storage.from_("creator-assets").create_signed_url(storage_path, 3600)
-        if isinstance(signed_res, dict) and "signedURL" in signed_res:
-             public_url = signed_res["signedURL"]
-        else:
-             public_url = signed_res
+        public_url = supabase.storage.from_("audio").get_public_url(storage_path)
+        if isinstance(public_url, dict) and "publicUrl" in public_url:
+            public_url = public_url["publicUrl"]
         
-        public_url = supabase.storage.from_("creator-assets").get_public_url(storage_path)
-        
-        # 5d. Save Assistant Message
-        duration = tensor.shape[1] / sr
+        # 4d. Save Assistant Message
+        duration = audio_numpy.shape[0] / sr
         supabase.table("Message").insert({
             "id": str(uuid.uuid4()),
             "chatSessionId": session_id,
             "role": "ASSISTANT",
-            "content": "", # Audio only
+            "content": "", 
             "audioUrl": public_url,
             "durationSec": duration,
             "createdAt": datetime.utcnow().isoformat()
         }).execute()
 
-        # 6. Cleanup Local Output (Keep container stateless)
+        # 5. Cleanup Local Output
         if out_wav.exists():
             os.remove(out_wav)
 
     except Exception as e:
         print(f"Chat Error: {e}")
         print(traceback.format_exc())
-        # Cleanup on error too
         if out_wav and out_wav.exists():
             os.remove(out_wav)
         detail = "Internal Server Error" if IS_PROD else f"{e}\n{traceback.format_exc()}"
@@ -164,6 +136,5 @@ async def chat_generate(req: ChatGenerateRequest):
         
     return {
         "status": "success",
-        "audio_path": str(out_wav), # Local fallback
         "audio_url": public_url
     }

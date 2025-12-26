@@ -35,8 +35,8 @@ The technical stack is built entirely on Node.js/TypeScript.
     *   State: **Complete**. Handles Separation (Demucs) and Diarization (Pyannote).
 *   **Voice Generation (`apps/worker-higgs`)**:
     *   State: **Active**. Higgs Audio V2 (3B) integrated with 8-bit quantization.
-    *   **Features**: Supports **Instant Voice Cloning** via cached audio IDs. Resolved shape mismatch issues in generation loop.
-    *   **Endpoint**: `POST /synthesize` is fully functional.
+    *   **Features**: Supports **Instant Voice Cloning** via cached audio IDs. Implemented **Full-Sequence Decoding** to eliminate audio artifacts and ensure high-quality output.
+    *   **Endpoint**: `POST /synthesize` is fully functional and optimized for quality.
 
 ### Consumer-Side (`apps/app`) - NEW
 *   **End-User App**:

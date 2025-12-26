@@ -15,7 +15,7 @@
     - [x] Setup Vector DB (pgvector Schema)
     - [x] Implement Audio Extractor (FFmpeg Structure)
     - [x] Implement Audio Cleaning (Demucs for Noise, Pyannote for Diarization)
-    - [x] Setup Tier 1 Voice (Higgs Audio V2)
+    - [x] Setup Tier 1 Voice (Higgs Audio V2 - High Quality)
 - [/] **Creator Dashboard & Brain**
     - [x] Basic UI Scaffolding
     - [x] Implement "Persona Config" (System Prompt Builder)

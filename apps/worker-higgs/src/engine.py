@@ -1,12 +1,15 @@
 import torch
-from dataclasses import dataclass, field, asdict
+import numpy as np
+from dataclasses import dataclass, field
 from .config import KV_CACHE_SIZE
 
 # Import Boson AI Higgs
 try:
-    from boson_multimodal.serve.serve_engine import HiggsAudioServeEngine, HiggsAudioResponse
-    from boson_multimodal.data_types import ChatMLSample, Message
-    from dataclasses import asdict
+    from boson_multimodal.serve.serve_engine import HiggsAudioServeEngine
+    from boson_multimodal.data_types import ChatMLSample, Message, AudioContent, TextContent
+    from boson_multimodal.dataset.chatml_dataset import ChatMLDatasetSample
+    from boson_multimodal.data_collator.higgs_audio_collator import HiggsAudioSampleCollator
+    from boson_multimodal.model.higgs_audio.utils import revert_delay_pattern
     HIGGS_AVAILABLE = True
 except ImportError as e:
     HIGGS_AVAILABLE = False
@@ -21,164 +24,128 @@ except ImportError as e:
         meta_info: dict = field(default_factory=dict)
     
     class HiggsAudioServeEngine: pass
-    class HiggsAudioResponse: pass
 
-# --- Cached Engine Subclass ---
-if HIGGS_AVAILABLE:
-    class CachedHiggsEngine(HiggsAudioServeEngine):
+class CachedHiggsEngine(HiggsAudioServeEngine):
+    """
+    Extended Engine that matches the reference generation.py implementation
+    and supports in-context voice cloning.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def generate_with_voice(
+        self,
+        text_prompt: str,
+        voice_audio_ids: torch.Tensor,
+        voice_transcript: str,
+        max_new_tokens: int = 2048,
+        temperature: float = 0.7,
+        top_p: float = 0.95
+    ):
         """
-        Extended Engine that supports passing pre-computed audio tensors (audio_ids)
-        to skip re-tokenization of large reference files.
+        Generate audio using a reference voice (in-context cloning).
+        Matches the logic in higgs-audio/examples/generation.py
         """
-        def generate_with_cache(
-            self,
-            chat_ml_sample: ChatMLSample,
-            cached_audio_ids: torch.Tensor,
-            max_new_tokens: int = 2048,
-            temperature: float = 0.7,
-            top_p: float = 0.95
-        ):
-            """
-            """
-            with open("debug_log.txt", "a") as f:
-                f.write("DEBUG: generate_with_cache called\n")
-            with torch.no_grad():
-                # Get standard inputs (text tokens etc)
-                # We assume the chat_ml_sample has NO audio, or we overwrite it.
-                inputs = self._prepare_inputs(chat_ml_sample, force_audio_gen=True)
-                
-                # Calculate Input Lengths
-                input_len = inputs["input_ids"].shape[1]
-                audio_len = cached_audio_ids.shape[1] if cached_audio_ids is not None else 0
-                
-                # Trim Audio if needed to fit Cache
-                # We reserve space for input text + some generation buffer
-                reserved_gen = 128 # Minimum tokens to generate
-                max_allowed_audio = KV_CACHE_SIZE - input_len - reserved_gen
-                
-                if audio_len > max_allowed_audio:
-                    new_len = max(0, max_allowed_audio)
-                    print(f"--> Trimming audio cache from {audio_len} to {new_len} to fit KV_CACHE_SIZE ({KV_CACHE_SIZE})")
-                    if new_len > 0:
-                        cached_audio_ids = cached_audio_ids[:, -new_len:]
-                    else:
-                        cached_audio_ids = torch.empty((1, 0), dtype=cached_audio_ids.dtype)
-                    audio_len = cached_audio_ids.shape[1]
+        if not HIGGS_AVAILABLE:
+            return None, 24000
 
-                # INJECT CACHE
-                # inputs is a dict of tensors on device
-                # cached_audio_ids shape: [1, seq_len] -> needs to be injected in 'audio_ids_concat'
-                
-                # Verify key names based on source inspection
-                # FORCE INJECTION - The base engine might not prep this key if no audio provided initially
-                # but we want to force it for cloning.
-                # Ensure cached_audio_ids has shape [8, T] (flattened batch for audio_out_ids)
-                if cached_audio_ids.dim() == 3:
-                    cached_audio_ids = cached_audio_ids.squeeze(0)
-                
-                print(f"--> Injected Cache IDs: {cached_audio_ids.shape}")
-                inputs["audio_out_ids"] = cached_audio_ids.to(self.device)
-                inputs["audio_out_ids_start"] = torch.tensor([0], dtype=torch.long, device=self.device)
-                
-                # FIX: Append audio_out_token_idx to input_ids to create a placeholder for the injected audio
-                # The model expects a placeholder token where the audio embeddings should be merged.
-                if hasattr(self.model.config, "audio_out_token_idx"):
-                    audio_out_token_id = self.model.config.audio_out_token_idx
-                    # input_ids is [1, seq_len]
-                    
-                    # We need one placeholder for EACH audio token in the cache
-                    # cached_audio_ids shape is [1, 8, T] or [1, T] depending on codebook?
-                    # Actually cached_audio_ids is [1, num_codebooks, seq_len] usually?
-                    # Let's check the shape printed in logs: [1, 8, 1849]
-                    # The model likely flattens this or expects seq_len placeholders.
-                    # Based on utils.py merge function:
-                    # It seems to expect one placeholder per time step (seq_len).
-                    
-                    # We need exactly ONE placeholder token for the entire audio sequence.
-                    # The merge_input_ids_with_audio_features function will expand this single token
-                    # to the length of the audio_out_embed.
-                    
-                    with open("debug_log.txt", "a") as f:
-                        f.write(f"DEBUG: cached_audio_ids shape: {cached_audio_ids.shape}\n")
-                        f.write(f"DEBUG: input_ids before: {inputs['input_ids'].shape}\n")
-                        count = (inputs["input_ids"] == audio_out_token_id).sum()
-                        f.write(f"DEBUG: placeholders before: {count}\n")
-                        f.write(f"DEBUG: model.config.use_delay_pattern: {getattr(self.model.config, 'use_delay_pattern', 'N/A')}\n")
-                        f.write(f"DEBUG: model.config.audio_num_codebooks: {getattr(self.model.config, 'audio_num_codebooks', 'N/A')}\n")
-                        f.write(f"DEBUG: model.config.audio_stream_bos_id: {getattr(self.model.config, 'audio_stream_bos_id', 'N/A')}\n")
-                        f.write(f"DEBUG: cached_audio_ids first 10 tokens (cb0): {cached_audio_ids[0, :10].tolist()}\n")
+        with torch.no_grad():
+            # 1. Build ChatML Sample with Reference Audio (Few-shot style)
+            messages = [
+                Message(role="system", content="Generate audio following instruction."),
+                Message(role="user", content=voice_transcript),
+                Message(role="assistant", content=[AudioContent(audio_url="placeholder")]),
+                Message(role="user", content=text_prompt)
+            ]
+            chat_ml_sample = ChatMLSample(messages=messages)
 
-                    placeholder = torch.full(
-                        (1, 1), 
-                        audio_out_token_id, 
-                        device=self.device, 
-                        dtype=inputs["input_ids"].dtype
-                    )
-                    inputs["input_ids"] = torch.cat([inputs["input_ids"], placeholder], dim=1)
-                    
-                    with open("debug_log.txt", "a") as f:
-                        f.write(f"DEBUG: input_ids after: {inputs['input_ids'].shape}\n")
-                    
-                    # Also update attention_mask if present
-                    if "attention_mask" in inputs:
-                        mask_placeholder = torch.ones(
-                            (1, 1), 
-                            device=self.device, 
-                            dtype=inputs["attention_mask"].dtype
-                        )
-                        inputs["attention_mask"] = torch.cat([inputs["attention_mask"], mask_placeholder], dim=1)
-                
-                self._prepare_kv_caches()
-                
-                # Calculate Safe Max New Tokens
-                # Total Length = Input Text Tokens + Audio Tokens + New Tokens
-                input_len = inputs["input_ids"].shape[1]
-                audio_len = cached_audio_ids.shape[1] if cached_audio_ids is not None else 0
-                
-                # Get max cache size from buckets
-                max_cache_len = max(self.kv_caches.keys())
-                
-                # Reserve space for input
-                # input_len is small (text + 1 placeholder), so we MUST add audio_len to account for expansion.
-                available_tokens = max_cache_len - (input_len + audio_len)
-                
-                if available_tokens <= 0:
-                    raise ValueError(f"Input length ({input_len} + {audio_len} = {input_len + audio_len}) exceeds cache size ({max_cache_len}).")
-                
-                # Clamp max_new_tokens
-                safe_max_new_tokens = min(max_new_tokens, available_tokens - 1) # -1 buffer
-                
-                print(f"--> Gen Limit: {safe_max_new_tokens} (Input: {input_len}, Cache: {max_cache_len})")
+            # 2. Prepare Dataset Sample
+            # We need to convert ChatMLSample to ChatMLDatasetSample
+            from boson_multimodal.dataset.chatml_dataset import prepare_chatml_sample
+            input_tokens, label_tokens, audio_contents, speaker_id = prepare_chatml_sample(
+                chat_ml_sample, self.tokenizer
+            )
+            
+            # Add Assistant Header (Crucial for model to start generating)
+            postfix = self.tokenizer.encode(
+                "<|start_header_id|>assistant<|end_header_id|>\n\n", add_special_tokens=False
+            )
+            input_tokens.extend(postfix)
 
-                outputs = self.model.generate(
-                    **inputs,
-                    max_new_tokens=safe_max_new_tokens,
-                    use_cache=True,
-                    tokenizer=self.tokenizer,
-                    do_sample=True,
-                    temperature=temperature,
-                    top_p=top_p,
-                    past_key_values_buckets=self.kv_caches
-                )
-                
-                # Decoding Response (Same as original)
-                if len(outputs[1]) > 0:
-                    wv_list = []
-                    from boson_multimodal.model.higgs_audio.utils import revert_delay_pattern
-                    import numpy as np
-                    
-                    for output_audio in outputs[1]:
-                        vq_code = revert_delay_pattern(output_audio).clip(0, self.audio_codebook_size - 1)[:, 1:-1]
-                        wv_numpy = self.audio_tokenizer.decode(vq_code.unsqueeze(0))[0, 0]
-                        wv_list.append(wv_numpy)
-                    wv_numpy = np.concatenate(wv_list)
-                else:
-                    wv_numpy = None
-                    
-                return wv_numpy, self.audio_tokenizer.sampling_rate
+            # 3. Inject Cached Audio IDs
+            # prepare_chatml_sample returns audio_contents which are just the AudioContent objects.
+            # We need to build the ChatMLDatasetSample and inject the voice_audio_ids.
+            
+            # voice_audio_ids should be [num_codebooks, seq_len]
+            if voice_audio_ids.dim() == 3:
+                voice_audio_ids = voice_audio_ids.squeeze(0)
+            
+            # Create the dataset sample
+            dataset_sample = ChatMLDatasetSample(
+                input_ids=torch.tensor(input_tokens, dtype=torch.long),
+                label_ids=None,
+                audio_ids_concat=voice_audio_ids.cpu(),
+                audio_ids_start=torch.tensor([0], dtype=torch.long),
+                audio_waveforms_concat=None,
+                audio_waveforms_start=None,
+                audio_sample_rate=None,
+                audio_speaker_indices=None,
+            )
 
-else:
-    CachedHiggsEngine = None
+            # 4. Collate and Prepare Model Inputs
+            # This handles the late merging and placeholder expansion correctly.
+            batch = self.collator([dataset_sample])
+            
+            # Move to device
+            from dataclasses import asdict
+            inputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in asdict(batch).items()}
+            
+            # 5. Handle KV Cache
+            self._prepare_kv_caches()
+            
+            # 6. Calculate Safe Max New Tokens
+            input_len = inputs["input_ids"].shape[1]
+            max_cache_len = max(self.kv_caches.keys())
+            available_tokens = max_cache_len - input_len
+            
+            if available_tokens <= 0:
+                print(f"WARNING: Input length {input_len} exceeds cache size {max_cache_len}. Trimming...")
+                # In a real scenario, we might want to trim the input_ids or audio_ids
+                safe_max_new_tokens = 64 # Emergency minimum
+            else:
+                safe_max_new_tokens = min(max_new_tokens, available_tokens - 1)
+
+            # 7. Generate
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=safe_max_new_tokens,
+                use_cache=True,
+                tokenizer=self.tokenizer,
+                do_sample=True,
+                temperature=temperature,
+                top_p=top_p,
+                past_key_values_buckets=self.kv_caches,
+                ras_win_len=7,
+                ras_win_max_num_repeat=2,
+                stop_strings=["<|end_of_text|>", "<|eot_id|>"],
+            )
+
+            # 8. Decode Response
+            if len(outputs[1]) > 0:
+                audio_out_ids_list = []
+                for output_audio in outputs[1]:
+                    audio_out_ids = output_audio
+                    if self.model.config.use_delay_pattern:
+                        audio_out_ids = revert_delay_pattern(audio_out_ids)
+                    vq_code = audio_out_ids.clip(0, self.audio_codebook_size - 1)[:, 1:-1]
+                    audio_out_ids_list.append(vq_code)
+                
+                concat_audio_out_ids = torch.cat(audio_out_ids_list, dim=1)
+                wv_numpy = self.audio_tokenizer.decode(concat_audio_out_ids.unsqueeze(0))[0, 0]
+            else:
+                wv_numpy = None
+                
+            return wv_numpy, self.audio_tokenizer.sampling_rate
 
 # Global Engine Instance
 serve_engine = None

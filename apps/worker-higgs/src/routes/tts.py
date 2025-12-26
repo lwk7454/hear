@@ -19,8 +19,8 @@ router = APIRouter()
 async def synthesize(req: SynthesizeRequest):
     """
     Direct Text-to-Speech Generation.
-    1. Loads Voice Cache (.pt).
-    2. Generates Audio.
+    1. Loads Voice Cache (.pt) and Transcript.
+    2. Generates Audio using in-context cloning.
     3. Uploads to Supabase (Ephemeral/TTS).
     """
     # Check Engine
@@ -30,9 +30,9 @@ async def synthesize(req: SynthesizeRequest):
              detail += f". Startup Error: {engine.startup_error}"
         raise HTTPException(503, detail)
     
-    # 1. Load Cache
+    # 1. Load Cache & Transcript
     try:
-        cache_path = ensure_voice_cache(req.creator_id, engine.serve_engine)
+        cache_path, transcript = ensure_voice_cache(req.creator_id, engine.serve_engine)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -44,75 +44,43 @@ async def synthesize(req: SynthesizeRequest):
     
     cached_tokens = torch.load(str(cache_path), weights_only=True)
     
-    # 2. Prepare Prompt
-    # Strict TTS: Just say the text.
-    # System prompt: "Read the following text aloud."
-    system_prompt = "Read the text exactly as written."
-    messages = [
-        engine.Message(role="system", content=system_prompt),
-        engine.Message(role="user", content=req.text)
-    ]
-    
     out_wav = None
     try:
-        # 3. Generate
-        audio_numpy, sr = engine.serve_engine.generate_with_cache(
-            chat_ml_sample=engine.ChatMLSample(messages=messages),
-            cached_audio_ids=cached_tokens,
+        # 2. Generate (In-Context Cloning)
+        audio_numpy, sr = engine.serve_engine.generate_with_voice(
+            text_prompt=req.text,
+            voice_audio_ids=cached_tokens,
+            voice_transcript=transcript,
             max_new_tokens=2048
         )
         
         if audio_numpy is None:
              raise HTTPException(500, "Generation produced no audio")
              
-        # 4. Process Output
+        # 3. Process Output
         tf = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        tf.close() # Close immediately to avoid file lock on Windows
+        tf.close() 
         out_wav = Path(tf.name)
         out_id = uuid.uuid4().hex
         
-        # Save WAV
         import soundfile as sf
         sf.write(str(out_wav), audio_numpy, sr)
         
-        # 5. Persistence (Ephemeral TTS bucket folder)
+        # 4. Persistence (Ephemeral TTS bucket folder)
         mp3_buffer = compress_audio(str(out_wav), bitrate="128k")
         storage_path = f"tts/{req.creator_id}/{out_id}.mp3"
         
-        # Check if fallback (WAV) happened by peeking header
         content_type = "audio/mpeg"
-        sample = mp3_buffer.getvalue()[:4]
-        if sample.startswith(b'RIFF'):
-             content_type = "audio/wav"
-             storage_path = storage_path.replace(".mp3", ".wav")
         
-        supabase.storage.from_("creator-assets").upload(
+        supabase.storage.from_("audio").upload(
             storage_path, mp3_buffer.read(),
             file_options={"content-type": content_type}
         )
         
-        # Private bucket requires signed URL
-        signed_res = supabase.storage.from_("creator-assets").create_signed_url(storage_path, 3600)
-        
-        # Debug print
-        print(f"DEBUG: Signed Res Type: {type(signed_res)}")
-        print(f"DEBUG: Signed Res: {signed_res}")
-
-        # Check if it returns dict (some versions) or string
-        if isinstance(signed_res, dict) and "signedURL" in signed_res:
-            public_url = signed_res["signedURL"]
-        elif isinstance(signed_res, str):
-             public_url = signed_res
-        else:
-             # Fallback if structure is unexpected
-             print("WARNING: Unexpected signed_url format. Falling back to public URL construction.")
-             public_url = supabase.storage.from_("creator-assets").get_public_url(storage_path)
-
-        # Ensure we don't return a localhost URL that is unreachable from the browser if we can avoid it.
-        # But for now, let's trust the signer.
-        public_url = str(public_url)
-
-        
+        public_url = supabase.storage.from_("audio").get_public_url(storage_path)
+        if isinstance(public_url, dict) and "publicUrl" in public_url:
+            public_url = public_url["publicUrl"]
+            
         # Cleanup
         if out_wav.exists():
             os.remove(out_wav)

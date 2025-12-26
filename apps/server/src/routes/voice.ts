@@ -2,54 +2,67 @@ import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/db'
 import { storageService } from '../services/storage'
 import fs from 'fs'
-import path from 'path'
-import { pipeline } from 'stream/promises'
 import { verifyUser } from '../lib/auth'
 
-// Ensure storage directory exists
-const VOICE_STORAGE_DIR = path.resolve(__dirname, '../../storage/voice_samples');
-if (!fs.existsSync(VOICE_STORAGE_DIR)) {
-    fs.mkdirSync(VOICE_STORAGE_DIR, { recursive: true });
-}
-
 export async function voiceRoutes(fastify: FastifyInstance) {
-    
+
     fastify.post('/voice/enroll', async (request, reply) => {
         try {
             const user = await verifyUser(request);
+            const body = request.body as any;
+            const youtubeUrl = body?.youtubeUrl?.value || body?.youtubeUrl;
 
-            const data = await request.file();
-            if (!data) {
-                return reply.code(400).send({ error: "No file uploaded" });
+            if (!youtubeUrl || typeof youtubeUrl !== 'string') {
+                return reply.code(400).send({ error: "YouTube URL is required for enrollment" });
             }
 
-            // Validate Mime Type (basic check)
-            if (!data.mimetype.startsWith('audio/')) {
-                 return reply.code(400).send({ error: "Invalid file type. Please upload audio." });
-            }
-
-            const filename = `${user.id}_golden.wav`; // Normalize to one file per user for now
-            
-            // Upload to Supabase directly (Stream)
-            // Note: We assume mp3/wav based on mimetype or filename, but let's trust mimetype
-            const publicUrl = await storageService.upload(data.file, `voice_samples/${filename}`, data.mimetype);
-
-            // Update DB
+            // 1. Set Status to PROCESSING immediately
             await prisma.creator.update({
                 where: { id: user.id },
                 data: {
-                    voiceSample: publicUrl, // Save URL instead of local path
-                    voiceStatus: 'ENROLLED'
+                    voiceStatus: 'PROCESSING',
+                    voiceSample: null // Clear old sample
                 }
             });
-            
-            console.log(`[Voice] Enrolled ${user.id}. Saved to ${publicUrl}`);
 
-            return { status: 'success', message: 'Voice enrolled successfully', path: publicUrl };
+            // 2. Start Background Job
+            (async () => {
+                try {
+                    const { AudioService } = await import('../services/audio.js');
+                    const audioService = new AudioService();
+
+                    console.log(`[VoiceJob] Starting enrollment for ${user.id} with ${youtubeUrl}`);
+                    const { audioPath, transcript } = await audioService.downloadAndExtractTranscript(youtubeUrl, user.id);
+
+                    const publicUrl = await storageService.upload(audioPath, `voice_samples/${user.id}_golden.wav`, 'audio/wav');
+
+                    await prisma.creator.update({
+                        where: { id: user.id },
+                        data: {
+                            voiceSample: publicUrl,
+                            voiceStatus: 'ENROLLED',
+                            voiceTranscript: transcript
+                        }
+                    });
+
+                    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+                    console.log(`[VoiceJob] Enrollment completed for ${user.id}`);
+
+                } catch (err) {
+                    console.error(`[VoiceJob] Failed for ${user.id}:`, err);
+                    await prisma.creator.update({
+                        where: { id: user.id },
+                        data: { voiceStatus: 'FAILED' }
+                    });
+                }
+            })();
+
+            // 3. Return Accepted
+            return reply.code(202).send({ status: 'processing', message: 'Voice enrollment started' });
 
         } catch (e) {
             console.error("[Voice Enrollment Error]", e);
-            reply.code(500).send({ error: "Failed to upload voice sample" });
+            reply.code(500).send({ error: "Failed to start enrollment" });
         }
     });
 
@@ -62,8 +75,8 @@ export async function voiceRoutes(fastify: FastifyInstance) {
                 select: { voiceStatus: true, voiceSample: true }
             });
 
-            return { 
-                status: 'success', 
+            return {
+                status: 'success',
                 enrolled: creator?.voiceStatus === 'ENROLLED',
                 hasFile: !!creator?.voiceSample
             };

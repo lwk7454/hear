@@ -3,7 +3,7 @@ import torch
 import traceback
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from .config import MODEL_PATH, TOKENIZER_PATH, DEVICE, USE_8BIT, KV_CACHE_SIZE
+from .config import MODEL_PATH, TOKENIZER_PATH, DEVICE, USE_8BIT, USE_4BIT, KV_CACHE_SIZE
 from .database import supabase
 from . import engine
 from .routes import router
@@ -13,9 +13,9 @@ async def lifespan(app: FastAPI):
     try:
         buckets = supabase.storage.list_buckets()
         bucket_names = [b.name for b in buckets]
-        if "creator-assets" not in bucket_names:
-            print("--> Creating 'creator-assets' bucket...")
-            supabase.storage.create_bucket("creator-assets", options={"public": False})
+        if "audio" not in bucket_names:
+            print("--> Creating 'audio' bucket...")
+            supabase.storage.create_bucket("audio", options={"public": True})
     except Exception as e:
         engine.startup_error = f"{e}\n{traceback.format_exc()}"
         print(f"--> Bucket Check Failed: {e}")
@@ -52,12 +52,22 @@ async def lifespan(app: FastAPI):
         load_kwargs = {}
         skip_cuda_graphs = False
         
-        if USE_8BIT and DEVICE == "cuda":
-            # Use BitsAndBytesConfig instead of deprecated load_in_8bit
+        if (USE_8BIT or USE_4BIT) and DEVICE == "cuda":
             from transformers import BitsAndBytesConfig
-            load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+            if USE_4BIT:
+                print("--> Loading in 4-bit...")
+                load_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_use_double_quant=True
+                )
+            else:
+                print("--> Loading in 8-bit...")
+                load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+            
             load_kwargs["device_map"] = "auto"
-            skip_cuda_graphs = True  # 8-bit quantization incompatible with CUDA graphs
+            skip_cuda_graphs = True  # Quantization incompatible with CUDA graphs
 
         engine.serve_engine = engine.CachedHiggsEngine(
             model_name_or_path=MODEL_PATH, 

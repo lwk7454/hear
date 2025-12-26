@@ -6,6 +6,7 @@ This worker handles Text-to-Speech (TTS) generation using the **Higgs Audio V2**
 - **FastAPI** based REST API.
 - **Higgs Audio V2** integration for high-quality multimodal (text/audio) generation.
 - **Cached Audio Injection**: Allows using pre-computed audio tokens (`.pt` files) to clone a voice instantly without re-processing long reference files.
+- **Full-Sequence Decoding**: Refactored decoding logic to process the entire generated sequence at once, eliminating audio artifacts and improving voice quality.
 - **8-bit Quantization**: Uses `bitsandbytes` to run the 3B model on consumer GPUs (e.g., RTX 4070 with 12GB VRAM).
 - **KV Cache Management**: Optimized memory usage with configurable cache sizes.
 
@@ -25,5 +26,6 @@ This worker handles Text-to-Speech (TTS) generation using the **Higgs Audio V2**
 - **Memory**: ~8-10GB VRAM required for 8-bit mode.
 
 ## Troubleshooting
+- **Audio Artifacts**: Resolved by switching from chunked decoding to full-sequence decoding.
 - **Shape Mismatch**: Fixed an issue where injecting cached audio led to tensor size mismatches during generation.
 - **CUDA OOM**: Ensure `KV_CACHE_SIZE` in `src/config.py` is appropriate for your GPU VRAM.
