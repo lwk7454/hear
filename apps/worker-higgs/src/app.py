@@ -8,6 +8,42 @@ from .database import supabase
 from . import engine
 from .routes import router
 
+def ensure_models_locally():
+    """
+    Checks if the model paths are local directories.
+    If they are, and they are empty/missing, download them from HuggingFace.
+    """
+    from huggingface_hub import snapshot_download
+    from pathlib import Path
+
+    # Mapping of target paths to their original HuggingFace repos
+    # This ensures that if we mount a volume at /runpod-volume/models/higgs,
+    # we can populate it if it's empty.
+    model_mapping = {
+        MODEL_PATH: "bosonai/higgs-audio-v2-generation-3B-base",
+        TOKENIZER_PATH: "bosonai/higgs-audio-v2-tokenizer"
+    }
+
+    for local_path_str, repo_id in model_mapping.items():
+        # Only attempt download if the path looks like an absolute local path
+        if local_path_str.startswith("/"):
+            local_path = Path(local_path_str)
+            
+            # If directory is missing or empty (less than 2 files)
+            if not local_path.exists() or len(list(local_path.iterdir())) < 2:
+                print(f"--> [Volume Setup] {local_path_str} is empty or missing.")
+                print(f"--> [Volume Setup] Downloading {repo_id} to {local_path_str}...")
+                try:
+                    snapshot_download(
+                        repo_id=repo_id,
+                        local_dir=str(local_path),
+                        local_dir_use_symlinks=False
+                    )
+                    print(f"--> [Volume Setup] Successfully provisioned {local_path_str}")
+                except Exception as e:
+                    print(f"--> [Volume Setup] FAILED to download {repo_id}: {e}")
+                    # We don't exit here, the engine init will fail later with better error reporting
+
 def initialize_engine():
     """
     Exposed for Aliyun FC /initialize lifecycle hook.
@@ -90,7 +126,10 @@ async def lifespan(app: FastAPI):
         print(f"--> Bucket Check Failed: {e}")
         print(traceback.format_exc())
 
-    # Initialize Engine (unless it's already done by /initialize in FC)
+    # 1. Ensure Persistent Storage is provisioned
+    ensure_models_locally()
+
+    # 2. Initialize Engine (unless it's already done by /initialize in FC)
     # In regular usage (local/runpod), it's done here.
     initialize_engine()
     
