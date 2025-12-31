@@ -111,7 +111,7 @@ ${historyContext}`;
 
         // 2. Synthesize Audio (Optional)
         let audioUrl = null;
-        const shouldAutoTts = body.data.autoTts !== undefined ? body.data.autoTts : (process.env.ENABLE_AUTO_TTS === 'true');
+        const shouldAutoTts = body.data.autoTts !== undefined ? body.data.autoTts : true;
         
         if (shouldAutoTts) {
             try {

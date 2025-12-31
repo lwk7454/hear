@@ -8,21 +8,13 @@ from .database import supabase
 from . import engine
 from .routes import router
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    try:
-        buckets = supabase.storage.list_buckets()
-        bucket_names = [b.name for b in buckets]
-        if "audio" not in bucket_names:
-            print("--> Creating 'audio' bucket...")
-            supabase.storage.create_bucket("audio", options={"public": True})
-    except Exception as e:
-        engine.startup_error = f"{e}\n{traceback.format_exc()}"
-        print(f"--> Bucket Check Failed: {e}")
-        print(traceback.format_exc())
+def initialize_engine():
+    """
+    Exposed for Aliyun FC /initialize lifecycle hook.
+    """
+    if engine.serve_engine is not None:
+        return engine.serve_engine
 
-    # Initialize Engine (Mock or Real)
-    
     # Mock Mode
     if os.getenv("MOCK_MODEL", "false").lower() == "true":
         print("--> MOCK_MODEL=true. Skipping load.")
@@ -40,12 +32,11 @@ async def lifespan(app: FastAPI):
             
         engine.serve_engine = MockEngine()
         engine.serve_engine.audio_tokenizer = MockEngine.audio_tokenizer() # for /clone usage
-        yield
-        return
+        return engine.serve_engine
 
     if not engine.HIGGS_AVAILABLE:
-        yield
-        return
+        print("--> Higgs not available. Skipping engine initialization.")
+        return None
 
     print(f"--> Starting Cached Higgs Engine on {DEVICE}...")
     try:
@@ -83,6 +74,25 @@ async def lifespan(app: FastAPI):
         engine.startup_error = f"{e}\n{traceback.format_exc()}"
         print(f"CRITICAL ERROR: {e}")
         print(traceback.format_exc())
+    
+    return engine.serve_engine
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        buckets = supabase.storage.list_buckets()
+        bucket_names = [b.name for b in buckets]
+        if "audio" not in bucket_names:
+            print("--> Creating 'audio' bucket...")
+            supabase.storage.create_bucket("audio", options={"public": True})
+    except Exception as e:
+        engine.startup_error = f"{e}\n{traceback.format_exc()}"
+        print(f"--> Bucket Check Failed: {e}")
+        print(traceback.format_exc())
+
+    # Initialize Engine (unless it's already done by /initialize in FC)
+    # In regular usage (local/runpod), it's done here.
+    initialize_engine()
     
     yield
 

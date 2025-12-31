@@ -1,0 +1,1 @@
+conn_str = "postgres://postgres.[PROJECT_ID]:[DB_PASSWORD]@aws-1-ca-central-1.pooler.supabase.com:5432/postgres"

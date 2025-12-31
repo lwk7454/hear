@@ -24,6 +24,9 @@ MODEL_PATH = os.getenv("HIGGS_MODEL_PATH", "bosonai/higgs-audio-v2-generation-3B
 TOKENIZER_PATH = os.getenv("HIGGS_TOKENIZER_PATH", "bosonai/higgs-audio-v2-tokenizer")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+# Aliyun FC default port is 9000
+PORT = int(os.getenv("PORT", "9000"))
+
 # Quantization
 USE_4BIT = os.getenv("USE_4BIT", "true" if os.name == "nt" else "false").lower() == "true"
 USE_8BIT = os.getenv("USE_8BIT", "false").lower() == "true"

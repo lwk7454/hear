@@ -46,3 +46,11 @@ tmp/
 venv/
 models/
 dist/
+
+# terraform
+.terraform/
+*.tfvars
+*tfplan*
+*.tfstate
+*.tfstate.*
+schema.json

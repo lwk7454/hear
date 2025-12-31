@@ -1,0 +1,8 @@
+project_name              = "hear"
+environment               = "dev"
+runpod_api_key            = "YOUR_RUNPOD_API_KEY"
+github_username           = "YOUR_GITHUB_USERNAME"
+supabase_project_id       = "YOUR_SUPABASE_PROJECT_REF"
+supabase_access_token     = "YOUR_SUPABASE_MANAGEMENT_TOKEN"
+supabase_url              = "YOUR_SUPABASE_URL"
+supabase_service_role_key = "YOUR_SUPABASE_SERVICE_ROLE_KEY"

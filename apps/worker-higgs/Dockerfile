@@ -11,8 +11,9 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Requirements first for caching
+# Copy Requirements and local libraries for installation
 COPY requirements.txt .
+COPY lib/ ./lib/
 
 # Install Dependencies
 # Use CUDA 12.1 index for production Linux GPU environment
@@ -25,10 +26,10 @@ COPY . .
 
 # Set Env
 ENV COQUI_TOS_AGREED=1
-ENV PORT=8002
+ENV PORT=9000
 
 # Expose Port
-EXPOSE 8002
+EXPOSE 9000
 
 # Run
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9000"]
