@@ -11,3 +11,8 @@ variable "supabase_service_role_key" {
   type      = string
   sensitive = true
 }
+
+variable "bucket_name" {
+  type    = string
+  default = "models"
+}

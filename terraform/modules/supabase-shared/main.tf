@@ -18,7 +18,7 @@ data "external" "bucket" {
   query = {
     supabase_url = var.supabase_url
     supabase_key = var.supabase_service_role_key
-    name         = "higgs-models-${var.environment}"
+    name         = var.bucket_name
     public       = "false"
   }
 }

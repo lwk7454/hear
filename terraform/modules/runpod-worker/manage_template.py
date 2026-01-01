@@ -55,7 +55,7 @@ def main():
           id
           name
         }
-        containerRegistryAuth {
+        containerRegistryCreds {
           id
           name
         }
@@ -70,7 +70,7 @@ def main():
         sys.exit(1)
 
     templates = data.get('data', {}).get('myself', {}).get('podTemplates', [])
-    registry_auths = data.get('data', {}).get('myself', {}).get('containerRegistryAuth', [])
+    registry_auths = data.get('data', {}).get('myself', {}).get('containerRegistryCreds', [])
 
     if templates is None:
         templates = []
