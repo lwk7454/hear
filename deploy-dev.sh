@@ -1,0 +1,63 @@
+#!/bin/bash
+set -e
+
+# Ensure we are in the project root
+cd "$(dirname "$0")"
+
+echo "🚀 Deploying Server to RunPod Dev..."
+
+# 1. Apply Terraform
+cd terraform/environments/dev
+terraform apply -auto-approve
+
+# 2. Extract Pod ID
+POD_ID=$(terraform output -raw pod_id)
+echo "✅ Deployment Complete. New Pod ID: $POD_ID"
+
+# 3. Update GitHub Secrets
+echo "🔄 Updating GitHub Secrets..."
+
+# Check if gh is installed
+if ! command -v gh &> /dev/null; then
+    echo "❌ GitHub CLI (gh) could not be found. Please install it to automate secret updates."
+    exit 1
+fi
+
+# Check/Set SUPABASE_ACCESS_TOKEN
+if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+    echo "🔑 SUPABASE_ACCESS_TOKEN not set. Attempting to extract from terraform.tfvars..."
+    TFVARS_FILE="terraform/environments/dev/terraform.tfvars"
+    if [ -f "$TFVARS_FILE" ]; then
+        SUPABASE_ACCESS_TOKEN=$(grep 'supabase_access_token' "$TFVARS_FILE" |  awk -F '"' '{print $2}')
+        export SUPABASE_ACCESS_TOKEN
+        echo "   - Loaded token from terraform.tfvars"
+    else
+        echo "⚠️  terraform.tfvars not found. Supabase commands might fail."
+    fi
+fi
+
+# Update SERVER_POD_ID (Used by deploy-server workflow for restarts)
+# Note: GitHub Actions now uses Pod Name matching, so this secret is no longer needed in GH.
+# gh secret set SERVER_POD_ID --body "$POD_ID"
+# echo "   - Updated SERVER_POD_ID in GitHub"
+
+# Update Supabase Secrets (For Stable Proxy)
+echo "🔄 Updating Supabase Secrets..."
+npx supabase secrets set SERVER_POD_ID="$POD_ID" --project-ref lobeixwzqhyofdjlvlbk
+echo "   - Updated SERVER_POD_ID in Supabase"
+
+# Ensure Web App uses Stable Proxy (Set once, or ensure sync)
+STABLE_API_URL="https://lobeixwzqhyofdjlvlbk.supabase.co/functions/v1/api-proxy"
+gh secret set NEXT_PUBLIC_API_URL --body "$STABLE_API_URL"
+echo "   - Ensured NEXT_PUBLIC_API_URL points to Stable Proxy: $STABLE_API_URL"
+
+# 4. Update Supabase Secrets (For Stable Proxy)
+echo "🔄 Updating Supabase Secrets..."
+npx supabase secrets set SERVER_POD_ID="$POD_ID" --project-ref lobeixwzqhyofdjlvlbk
+echo "   - Updated SERVER_POD_ID in Supabase"
+
+# 5. Deploy API Proxy (optional, usually only needs code changes)
+# echo "🚀 Deploying API Proxy..."
+# npx supabase functions deploy api-proxy --project-ref lobeixwzqhyofdjlvlbk --no-verify-jwt
+
+echo "🎉 All done! GitHub secrets are now in sync with the new deployment."

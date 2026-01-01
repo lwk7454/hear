@@ -82,13 +82,31 @@ jobs:
         if: steps.act.outputs.action != 'deploy'
         run: |
           ACTION="${{ steps.act.outputs.action }}"
-          POD_ID="${{ secrets.SERVER_POD_ID }}"
           API_KEY="${{ secrets.RUNPOD_API_KEY }}"
+          POD_NAME="hear-dev-server"
           
-          if [ -z "$POD_ID" ] || [ -z "$API_KEY" ]; then
-            echo "Missing SERVER_POD_ID or RUNPOD_API_KEY secrets"
+          if [ -z "$API_KEY" ]; then
+            echo "Missing RUNPOD_API_KEY secret"
             exit 1
           fi
+
+          echo "🔍 Looking up Pod ID for name: $POD_NAME..."
+          
+          # Query to find pod ID by name
+          QUERY="query { myself { pods { id name } } }"
+          RESPONSE=$(curl -s -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"$QUERY\"}")
+          
+          # Extract ID using jq
+          POD_ID=$(echo $RESPONSE | jq -r ".data.myself.pods[] | select(.name == \"$POD_NAME\") | .id")
+
+          if [ -z "$POD_ID" ] || [ "$POD_ID" == "null" ]; then
+            echo "❌ Pod with name '$POD_NAME' not found."
+            exit 1
+          fi
+
+          echo "✅ Found Pod ID: $POD_ID"
 
           if [ "$ACTION" == "start" ]; then
             echo "Starting pod $POD_ID..."

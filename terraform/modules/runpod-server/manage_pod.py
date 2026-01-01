@@ -95,7 +95,8 @@ def main():
         current_gpu_count = existing_pod.get('gpuCount')
         current_template_id = existing_pod.get('templateId')
         
-        existing_ports = existing_pod.get('runtime', {}).get('ports')
+        runtime = existing_pod.get('runtime') or {}
+        existing_ports = runtime.get('ports')
         has_correct_port = False
         if existing_ports:
             for p in existing_ports:
@@ -126,7 +127,8 @@ def main():
             runpod_graphql(api_key, mutation_terminate, {"input": {"podId": existing_pod["id"]}})
     
     # 2. Deploy CPU Pod
-    # Based on research, deployCpuPod is the correct undocumented mutation for pure CPU pods.
+    target_instance_id = "cpu3g-2-8"
+    
     # We use a literal mutation to avoid issues with unknown input type names in variables.
     mutation = f"""
     mutation {{

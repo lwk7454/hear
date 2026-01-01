@@ -146,6 +146,7 @@ const start = async () => {
     console.log('Server listening on http://localhost:8000')
 
     // Auto-Stop Timer
+    server.log.info({ idleTimeout: IDLE_TIMEOUT, checkInterval: CHECK_INTERVAL }, 'Auto-stop timer started')
     setInterval(async () => {
       const idleTime = Date.now() - lastActiveAt
       if (idleTime > IDLE_TIMEOUT) {
@@ -153,7 +154,7 @@ const start = async () => {
         const apiKey = process.env.RUNPOD_API_KEY
         
         if (podId && apiKey) {
-          server.log.info({ podId }, 'Idle timeout reached. Stopping RunPod pod...')
+          server.log.info({ podId, idleTime }, 'Idle timeout reached. Stopping RunPod pod...')
           try {
             await axios.post(
               `https://api.runpod.io/graphql?api_key=${apiKey}`,
@@ -161,10 +162,13 @@ const start = async () => {
                 query: `mutation { podStop(input: { podId: "${podId}" }) { id } }`
               }
             )
+            server.log.info('Pod stop mutation sent. Exiting...')
             process.exit(0)
-          } catch (err) {
-            server.log.error(err, 'Failed to stop RunPod pod')
+          } catch (err: any) {
+            server.log.error({ err: err.message }, 'Failed to stop RunPod pod')
           }
+        } else {
+          server.log.warn({ podId: !!podId, apiKey: !!apiKey }, 'Idle timeout reached but missing Pod ID or API Key. Skipping auto-stop.')
         }
       }
     }, CHECK_INTERVAL)

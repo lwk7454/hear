@@ -37,7 +37,7 @@ RUN npm install -g pnpm
 # Copy workspace configuration and packages needed for production
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
 COPY --from=builder /app/apps/server/package.json ./apps/server/
-COPY --from=builder /app/apps/server/dist ./apps/server/dist
+COPY --from=builder /app/apps/server/src ./apps/server/src
 COPY --from=builder /app/packages/db ./packages/db
 
 # Install production dependencies and generate prisma client
@@ -50,4 +50,4 @@ EXPOSE 8000
 
 ENV NODE_ENV=production
 
-CMD ["node", "dist/index.js"]
+CMD ["npx", "tsx", "src/index.ts"]
