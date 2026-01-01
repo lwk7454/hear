@@ -7,6 +7,10 @@ import { ArrowLeft, Mic, Phone, SendHorizontal, MoreVertical } from "lucide-reac
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
+export const generateStaticParams = () => {
+  return [{ creatorId: 'test' }];
+};
+
 export default function ChatPage() {
   const { creatorId } = useParams()
   const [mode, setMode] = React.useState<"text" | "voice_tier1" | "voice_tier2">("text")

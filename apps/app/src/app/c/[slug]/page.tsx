@@ -2,6 +2,10 @@ import { Button } from "@/components/ui/button"
 import { MessageCircle, Phone, ArrowLeft, Share2 } from "lucide-react"
 import Link from "next/link"
 
+export const generateStaticParams = () => {
+  return [{ slug: 'test' }];
+};
+
 export default async function CreatorProfilePage({
   params,
 }: {
