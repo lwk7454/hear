@@ -79,20 +79,20 @@ export async function chatRoutes(fastify: FastifyInstance) {
             take: 10 // Take last 10
         });
 
-        const historyContext = history.map(m => `${m.role}: ${m.content}`).join("\n");
+        const historyContext = history.map((m: any) => `${m.role}: ${m.content}`).join("\n");
 
         // 1. RAG Retrieval
         const ragService = new RAGService();
         const relevantChunks = await ragService.retrieve(creatorId, text, 5);
         
-        const brainContext = relevantChunks.map(c => {
+        const brainContext = relevantChunks.map((c: any) => {
             let meta = `[Source: ${c.platform}]`;
             if (c.imagePath) meta += ` [Image: ${c.imagePath}]`;
             return `${meta} Content: ${c.content}`;
         }).join("\n---\n");
 
         const backgroundContext = persona?.backgroundStory ? `\nBackground Story:\n${persona.backgroundStory}` : "";
-        const factsContext = persona?.facts.length ? `\nVerified Facts:\n${persona.facts.map(f => `- ${f.content}`).join("\n")}` : "";
+        const factsContext = (persona as any)?.facts.length ? `\nVerified Facts:\n${(persona as any).facts.map((f: any) => `- ${f.content}`).join("\n")}` : "";
         const toneContext = persona?.tone ? `\nYour Tone: ${persona.tone}` : "";
         const keywordsContext = persona?.keywords?.length ? `\nYour Keywords/Interests: ${persona.keywords.join(", ")}` : "";
 
@@ -173,7 +173,7 @@ ${historyContext}`;
 
            return { 
                status: 'success', 
-               messages: messages.map(m => ({
+               messages: messages.map((m: any) => ({
                    role: m.role.toLowerCase(),
                    text: m.content,
                    audioUrl: m.audioUrl

@@ -54,7 +54,7 @@ Return as a JSON array of strings.`;
 
     for (const factContent of newFacts) {
       // 1. Duplicate Detection (Basic string match for now, could use embeddings later)
-      const isDuplicate = profile.facts.some(f => 
+      const isDuplicate = (profile.facts as any[]).some((f: any) => 
         f.content.toLowerCase().trim() === factContent.toLowerCase().trim()
       );
 

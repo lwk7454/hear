@@ -14,6 +14,7 @@
 *   **[Task List](docs/task.md)**: Roadmap progress.
 *   **[Integration Guide](docs/integration_guide.md)**: Setup guides (e.g., GLM-4-Voice).
 *   **[Production Strategy](docs/production_strategy.md)**: Deployment & Safety.
+*   **[Hosting & Deployment](docs/hosting.md)**: Details on the current RunPod + Supabase setup.
 
 
 ---
@@ -112,5 +113,25 @@ graph TD
     *   🎯 **Goal**: Add audio support to the existing Persona.
     *   🛠 **Tech**: Voice Cloning (fine-tuned on the Ingested Audio).
 
-## 5. Strategic Advantage
+## 5. Deployment & Hosting (Dev)
+
+We use a "Nearly Free" hybrid stack for development, leveraging **RunPod** for compute and **Supabase** for storage/hosting.
+
+### Backend (Server)
+- **Host**: RunPod Pod (CPU-only) in North Carolina (`US-NC-2`).
+- **Cost Management**: **Smart Auto-Stop**. The server autonomously terminates its own pod after 15 minutes of inactivity (no REST/WS requests).
+- **Proximity**: Located in the US-East region for abundant CPU pod availability.
+
+### Frontend (Web & App)
+- **Host**: Supabase Storage (Public Bucket).
+- **Routing**: A Supabase Edge Function (`static-proxy`) handles Next.js static routing and serves `.html` files for clean URLs.
+- **Cost**: $0 (Standard Supabase tier).
+
+## 6. CI/CD Workflows
+
+- **`Deploy Server`**: Triggered on `apps/server/**` changes. Builds Docker image and pushes to GHCR. Includes a manual "Wake Up" trigger.
+- **`Deploy Web & App`**: Triggered on `apps/web/**` or `apps/app/**` changes. Performs a `next build` static export and uploads to the Supabase `web` bucket.
+- **`Deploy Cleanser Worker`**: Builds and deploys the audio cleansing worker to RunPod Serverless.
+
+## 7. Strategic Advantage
 Our competitors focus on "Chatting." We focus on **"Cloning."** By making the training process automatic (ingesting existing content), we solve the #1 problem for creators: **Laziness/Time**. They don't want to write a prompt; they want to be uploaded.

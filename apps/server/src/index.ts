@@ -13,6 +13,15 @@ import { voiceRoutes } from './routes/voice'
 import { chatRoutes } from './routes/chat'
 import { factRoutes } from './routes/facts'
 import { RealTimeVAD } from "@ericedouard/vad-node-realtime"
+import axios from 'axios'
+
+let lastActiveAt = Date.now()
+const IDLE_TIMEOUT = 15 * 60 * 1000 // 15 minutes
+const CHECK_INTERVAL = 60 * 1000 // 1 minute
+
+function updateActivity() {
+  lastActiveAt = Date.now()
+}
 
 const server: FastifyInstance = Fastify({
   logger: true
@@ -50,6 +59,11 @@ const start = async () => {
       }
     })
     await server.register(websocket)
+
+    // Activity Tracker Hook
+    server.addHook('onRequest', async (request, reply) => {
+      updateActivity()
+    })
 
     server.register(jwt, {
       secret: process.env.JWT_SECRET || 'supersecret123',
@@ -113,6 +127,7 @@ const start = async () => {
             await vad.processAudio(float32Array)
 
             // Proxy to GLM
+            updateActivity()
             glm.sendAudioChunk(message)
           })
 
@@ -129,6 +144,30 @@ const start = async () => {
     await storageService.ensureBucket();
     await server.listen({ port: 8000, host: '0.0.0.0' })
     console.log('Server listening on http://localhost:8000')
+
+    // Auto-Stop Timer
+    setInterval(async () => {
+      const idleTime = Date.now() - lastActiveAt
+      if (idleTime > IDLE_TIMEOUT) {
+        const podId = process.env.SERVER_POD_ID || process.env.RUNPOD_POD_ID
+        const apiKey = process.env.RUNPOD_API_KEY
+        
+        if (podId && apiKey) {
+          server.log.info({ podId }, 'Idle timeout reached. Stopping RunPod pod...')
+          try {
+            await axios.post(
+              `https://api.runpod.io/graphql?api_key=${apiKey}`,
+              {
+                query: `mutation { podStop(input: { podId: "${podId}" }) { id } }`
+              }
+            )
+            process.exit(0)
+          } catch (err) {
+            server.log.error(err, 'Failed to stop RunPod pod')
+          }
+        }
+      }
+    }, CHECK_INTERVAL)
   } catch (err) {
     server.log.error(err)
     process.exit(1)

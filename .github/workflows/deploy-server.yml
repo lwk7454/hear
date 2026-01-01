@@ -1,0 +1,103 @@
+name: Deploy Server
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/server/**'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - start
+          - stop
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: hear/server
+
+jobs:
+  build-and-push:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'deploy')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/server/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  manage-pod:
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Determine Action
+        id: act
+        run: |
+          if [ "${{ github.event_name }}" == "push" ]; then
+            echo "action=start" >> $GITHUB_OUTPUT
+          else
+            echo "action=${{ github.event.inputs.action }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: RunPod Pod Management
+        if: steps.act.outputs.action != 'deploy'
+        run: |
+          ACTION="${{ steps.act.outputs.action }}"
+          POD_ID="${{ secrets.SERVER_POD_ID }}"
+          API_KEY="${{ secrets.RUNPOD_API_KEY }}"
+          
+          if [ -z "$POD_ID" ] || [ -z "$API_KEY" ]; then
+            echo "Missing SERVER_POD_ID or RUNPOD_API_KEY secrets"
+            exit 1
+          fi
+
+          if [ "$ACTION" == "start" ]; then
+            echo "Starting pod $POD_ID..."
+            curl -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d '{"query": "mutation { podStart(input: { podId: \"'$POD_ID'\" }) { id } }"}'
+          elif [ "$ACTION" == "stop" ]; then
+            echo "Stopping pod $POD_ID..."
+            curl -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d '{"query": "mutation { podStop(input: { podId: \"'$POD_ID'\" }) { id } }"}'
+          fi

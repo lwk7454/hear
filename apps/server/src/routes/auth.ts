@@ -140,7 +140,7 @@ export async function authRoutes(fastify: FastifyInstance) {
             // Just use tokens to save.
 
             // Update Connection for existing user
-            await prisma.creator.update({
+            await (prisma.creator as any).update({
                 where: { id: userId as string },
                 data: {
                     authConnections: {
@@ -203,13 +203,13 @@ export async function authRoutes(fastify: FastifyInstance) {
 
             if (tokens.error_message) throw new Error(tokens.error_message);
 
-            await prisma.creator.update({
+            await (prisma.creator as any).update({
                 where: { id: userId as string },
                 data: {
                     authConnections: {
                         create: {
                             platform: 'INSTAGRAM',
-                            accessToken: tokens.access_token,
+                            accessToken: (tokens as any).access_token,
                         }
                     }
                 }

@@ -388,7 +388,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
             include: { comments: true } // Include comments to count them
         });
 
-        const mappedItems = items.map(item => ({
+        const mappedItems = items.map((item: any) => ({
             id: item.id,
             externalId: item.externalId,
             title: item.title || "Untitled",
@@ -545,12 +545,12 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
 
           // Mark all as PROCESSING first
           await prisma.contentItem.updateMany({
-              where: { id: { in: items.map(i => i.id) } },
+              where: { id: { in: items.map((i: any) => i.id) } },
               data: { status: 'PROCESSING' }
           });
 
           // Fire and forget processing loop
-          items.forEach(item => {
+          items.forEach((item: any) => {
               if (item.status === 'COMPLETED') return; // Skip if already done? Actually user might want re-ingest. Let's allow it but UI should hide it.
               
               const type = item.platform === 'YOUTUBE' ? 'video' : 'post';

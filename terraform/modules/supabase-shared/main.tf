@@ -1,8 +1,7 @@
 terraform {
   required_providers {
     supabase = {
-      source  = "supabase/supabase"
-      version = "~> 1.0"
+      source = "supabase/supabase"
     }
     external = {
       source  = "hashicorp/external"
