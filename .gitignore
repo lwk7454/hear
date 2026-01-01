@@ -42,6 +42,7 @@ next-env.d.ts
 
 .turbo/
 supabase/
+!supabase/functions
 tmp/
 venv/
 models/
