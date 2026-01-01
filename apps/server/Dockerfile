@@ -30,10 +30,18 @@ WORKDIR /app
 # Install ffmpeg for audio processing
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/node_modules ./node_modules
+# Copy built artifacts and configuration
 COPY --from=builder /app/apps/server/dist ./dist
 COPY --from=builder /app/apps/server/package.json ./package.json
-COPY --from=builder /app/packages/db ./packages/db
+COPY --from=builder /app/packages/db ./../../packages/db
+COPY --from=builder /app/package.json ../../package.json
+COPY --from=builder /app/pnpm-lock.yaml ../../pnpm-lock.yaml
+COPY --from=builder /app/pnpm-workspace.yaml ../../pnpm-workspace.yaml
+
+# Install production dependencies and generate prisma client
+RUN npm install -g pnpm && \
+    pnpm install --prod && \
+    pnpm --filter db run generate
 
 EXPOSE 8000
 
