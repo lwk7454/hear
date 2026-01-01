@@ -88,7 +88,7 @@ module "runpod_server" {
   environment     = var.environment
   container_image = var.server_image
   env_vars = {
-    DATABASE_URL              = "postgres://postgres.${var.project_id}:${var.db_password}@aws-1-ca-central-1.pooler.supabase.com:5432/postgres"
+    DATABASE_URL              = "postgres://postgres.${var.project_id}:${var.db_password}@aws-1-ca-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
     SUPABASE_URL              = var.supabase_url
     SUPABASE_SERVICE_KEY      = var.supabase_service_role_key
     GOOGLE_LOGIN_REDIRECT_URI = "https://hear-server-dev.runpod.net/auth/callback" # Placeholder
@@ -98,6 +98,7 @@ module "runpod_server" {
     IG_CLIENT_ID              = "placeholder-id"
     IG_CLIENT_SECRET          = "placeholder-secret"
     IG_REDIRECT_URI           = "https://hear-server-dev.runpod.net/auth/instagram/callback"
+    IDLE_TIMEOUT              = "300000" # 5 minutes
   }
 }
 

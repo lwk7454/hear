@@ -16,7 +16,7 @@ import { RealTimeVAD } from "@ericedouard/vad-node-realtime"
 import axios from 'axios'
 
 let lastActiveAt = Date.now()
-const IDLE_TIMEOUT = 15 * 60 * 1000 // 15 minutes
+const IDLE_TIMEOUT = process.env.IDLE_TIMEOUT ? parseInt(process.env.IDLE_TIMEOUT) : 15 * 60 * 1000 // Default 15m
 const CHECK_INTERVAL = 60 * 1000 // 1 minute
 
 function updateActivity() {
@@ -142,6 +142,19 @@ const start = async () => {
 
     // 4. Start Server
     await storageService.ensureBucket();
+    
+    // Self-Register Pod ID
+    const podId = process.env.RUNPOD_POD_ID || process.env.SERVER_POD_ID
+    if (podId) {
+      const { prisma } = await import('./lib/db')
+      await prisma.configuration.upsert({
+        where: { key: 'SERVER_POD_ID' },
+        update: { value: podId },
+        create: { key: 'SERVER_POD_ID', value: podId }
+      })
+      server.log.info({ podId }, 'Updated SERVER_POD_ID in DB Configuration')
+    }
+
     await server.listen({ port: 8000, host: '0.0.0.0' })
     console.log('Server listening on http://localhost:8000')
 

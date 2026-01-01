@@ -41,20 +41,11 @@ fi
 # gh secret set SERVER_POD_ID --body "$POD_ID"
 # echo "   - Updated SERVER_POD_ID in GitHub"
 
-# Update Supabase Secrets (For Stable Proxy)
-echo "🔄 Updating Supabase Secrets..."
-npx supabase secrets set SERVER_POD_ID="$POD_ID" --project-ref lobeixwzqhyofdjlvlbk
-echo "   - Updated SERVER_POD_ID in Supabase"
 
 # Ensure Web App uses Stable Proxy (Set once, or ensure sync)
 STABLE_API_URL="https://lobeixwzqhyofdjlvlbk.supabase.co/functions/v1/api-proxy"
 gh secret set NEXT_PUBLIC_API_URL --body "$STABLE_API_URL"
 echo "   - Ensured NEXT_PUBLIC_API_URL points to Stable Proxy: $STABLE_API_URL"
-
-# 4. Update Supabase Secrets (For Stable Proxy)
-echo "🔄 Updating Supabase Secrets..."
-npx supabase secrets set SERVER_POD_ID="$POD_ID" --project-ref lobeixwzqhyofdjlvlbk
-echo "   - Updated SERVER_POD_ID in Supabase"
 
 # 5. Deploy API Proxy (optional, usually only needs code changes)
 # echo "🚀 Deploying API Proxy..."

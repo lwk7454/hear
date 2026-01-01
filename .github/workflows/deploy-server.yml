@@ -108,14 +108,55 @@ jobs:
 
           echo "✅ Found Pod ID: $POD_ID"
 
-          if [ "$ACTION" == "start" ]; then
-            echo "Starting pod $POD_ID..."
+          # 2. Get Template ID (Needed for recreation)
+          QUERY_TEMPLATE="query { myself { podTemplates { id name } } }"
+          RES_TEMPLATE=$(curl -s -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"$QUERY_TEMPLATE\"}")
+          
+          TEMPLATE_ID=$(echo $RES_TEMPLATE | jq -r ".data.myself.podTemplates[] | select(.name == \"$POD_NAME\") | .id")
+
+          if [ -z "$TEMPLATE_ID" ] || [ "$TEMPLATE_ID" == "null" ]; then
+             echo "❌ Template '$POD_NAME' not found (cannot re-create pod)."
+             exit 1
+          fi
+          echo "✅ Found Template ID: $TEMPLATE_ID"
+
+          # 3. Execute Action
+          if [ "$ACTION" == "stop" ]; then
+            echo "Stopping (Terminating) pod $POD_ID..."
             curl -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
               -H "Content-Type: application/json" \
-              -d '{"query": "mutation { podStart(input: { podId: \"'$POD_ID'\" }) { id } }"}'
-          elif [ "$ACTION" == "stop" ]; then
-            echo "Stopping pod $POD_ID..."
-            curl -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
+              -d '{"query": "mutation { podTerminate(input: { podId: \"'$POD_ID'\" }) { id } }"}'
+
+          elif [ "$ACTION" == "start" ] || [ "$ACTION" == "deploy" ]; then
+            echo "🔄 Recreating Pod (Terminate + Deploy)..."
+            
+            # Terminate existing if any
+            if [ ! -z "$POD_ID" ]; then
+               curl -s -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
+                -H "Content-Type: application/json" \
+                -d '{"query": "mutation { podTerminate(input: { podId: \"'$POD_ID'\" }) { id } }"}'
+               echo "   - Old pod terminated."
+               sleep 5 # Wait brief moment
+            fi
+
+            # Deploy New CPU Pod (Using fixed config matching manage_pod.py)
+            echo "🚀 Deploying new CPU Pod..."
+            DEPLOY_MUTATION="mutation { deployCpuPod(input: { name: \"$POD_NAME\", templateId: \"$TEMPLATE_ID\", instanceId: \"cpu3g-2-8\", containerDiskInGb: 5, cloudType: SECURE, dataCenterId: \"US-NC-2\", ports: \"8000/http\" }) { id } }"
+            
+            # Escape inner quotes for JSON payload
+            DEPLOY_PAYLOAD="{\"query\": \"mutation { deployCpuPod(input: { name: \\\"$POD_NAME\\\", templateId: \\\"$TEMPLATE_ID\\\", instanceId: \\\"cpu3g-2-8\\\", containerDiskInGb: 5, cloudType: SECURE, dataCenterId: \\\"US-NC-2\\\", ports: \\\"8000/http\\\" }) { id } }\"}"
+
+            DEPLOY_RES=$(curl -s -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
               -H "Content-Type: application/json" \
-              -d '{"query": "mutation { podStop(input: { podId: \"'$POD_ID'\" }) { id } }"}'
+              -d "$DEPLOY_PAYLOAD")
+
+            NEW_ID=$(echo $DEPLOY_RES | jq -r ".data.deployCpuPod.id")
+            
+            if [ -z "$NEW_ID" ] || [ "$NEW_ID" == "null" ]; then
+               echo "❌ Failed to deploy pod. Response: $DEPLOY_RES"
+               exit 1
+            fi
+            echo "✅ Deployed Pod ID: $NEW_ID"
           fi
