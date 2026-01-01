@@ -36,8 +36,6 @@ jobs:
       - name: Build Web (Landing)
         run: pnpm --filter web build
 
-      - name: Build App (Dashboard)
-        run: pnpm --filter app build
 
       - name: Deploy to Supabase Storage
         run: |
@@ -72,6 +70,3 @@ jobs:
 
           # Upload web to root
           upload_dir "apps/web/out" ""
-
-          # Upload app to /app
-          upload_dir "apps/app/out" "app/"
