@@ -40,7 +40,8 @@ def main():
     template_id = input_data.get('template_id')
     vcpu_count = int(input_data.get('vcpu_count', 2))
     memory_gb = int(input_data.get('memory_gb', 4))
-
+    ports = input_data.get('ports', '8000')
+    
     if not api_key or not pod_name or not template_id:
         print("Missing required input", file=sys.stderr)
         sys.exit(1)
@@ -94,9 +95,18 @@ def main():
         current_gpu_count = existing_pod.get('gpuCount')
         current_template_id = existing_pod.get('templateId')
         
+        existing_ports = existing_pod.get('runtime', {}).get('ports')
+        has_correct_port = False
+        if existing_ports:
+            for p in existing_ports:
+                if str(p.get('privatePort')) == str(ports):
+                    has_correct_port = True
+                    break
+
         if (current_dc == target_dc and 
             current_gpu_count == target_gpu_count and 
-            current_template_id == template_id):
+            current_template_id == template_id and
+            has_correct_port):
             print(json.dumps({"id": existing_pod["id"]}))
             return
         else:
@@ -105,6 +115,7 @@ def main():
             if current_dc != target_dc: reason.append(f"DC: {current_dc} -> {target_dc}")
             if current_gpu_count != target_gpu_count: reason.append(f"GPU: {current_gpu_count} -> {target_gpu_count}")
             if current_template_id != template_id: reason.append(f"Template: {current_template_id} -> {template_id}")
+            if not has_correct_port: reason.append(f"Ports: Missing or mismatched (Target: {ports})")
             
             print(f"Terminating mismatched pod {existing_pod['id']} ({', '.join(reason)})", file=sys.stderr)
             mutation_terminate = """
@@ -113,7 +124,7 @@ def main():
             }
             """
             runpod_graphql(api_key, mutation_terminate, {"input": {"podId": existing_pod["id"]}})
-
+    
     # 2. Deploy CPU Pod
     # Based on research, deployCpuPod is the correct undocumented mutation for pure CPU pods.
     # We use a literal mutation to avoid issues with unknown input type names in variables.
@@ -125,7 +136,8 @@ def main():
         instanceId: "{target_instance_id}",
         containerDiskInGb: {target_disk},
         cloudType: SECURE,
-        dataCenterId: "{target_dc}"
+        dataCenterId: "{target_dc}",
+        ports: "{ports}/http"
       }}) {{
         id
       }}

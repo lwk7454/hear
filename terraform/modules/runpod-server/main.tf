@@ -34,6 +34,7 @@ data "external" "pod" {
     template_id = data.external.template.result.id
     vcpu_count  = tostring(var.cpu_count)
     memory_gb   = tostring(var.ram_gb)
+    ports       = tostring(var.container_port)
   }
 }
 
