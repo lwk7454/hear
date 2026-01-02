@@ -74,7 +74,7 @@ module "worker" {
   project_name       = var.project_name
   environment        = var.environment
   runpod_api_key     = var.runpod_api_key
-  gpu_type           = "NVIDIA A40" # Optimized for Higgs
+  gpu_types          = ["NVIDIA L4", "NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090"]
   gpu_count          = 1
   container_image    = "ghcr.io/${var.github_username}/worker-higgs:latest"
   container_port     = 9000
@@ -101,5 +101,5 @@ module "worker" {
 # --- Outputs ---
 
 output "runpod_endpoint_url" {
-  value = module.worker.endpoint_url
+  value = module.worker.runpod_endpoint_url
 }

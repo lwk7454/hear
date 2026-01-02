@@ -11,9 +11,9 @@ variable "runpod_api_key" {
   type      = string
   sensitive = true
 }
-variable "gpu_type" {
-  type    = string
-  default = "NVIDIA RTX A4000" # Suitable for lighter workloads like Demucs
+variable "gpu_types" {
+  type    = list(string)
+  default = ["NVIDIA RTX A4000"]
 }
 variable "gpu_count" {
   type    = number

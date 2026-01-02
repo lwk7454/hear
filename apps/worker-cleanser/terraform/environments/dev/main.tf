@@ -60,7 +60,7 @@ module "worker" {
   environment     = var.environment
   worker_name     = "cleanser"
   runpod_api_key  = var.runpod_api_key
-  gpu_type        = "NVIDIA RTX A4000" # Smaller GPU for cleanser
+  gpu_types       = ["NVIDIA L4", "NVIDIA RTX A5000", "NVIDIA GeForce RTX 3090"]
   gpu_count       = 1
   container_image = "ghcr.io/${var.github_username}/worker-cleanser:latest"
   container_port  = 8001

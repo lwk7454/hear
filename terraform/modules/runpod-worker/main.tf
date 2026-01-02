@@ -37,7 +37,7 @@ resource "runpod_endpoint" "worker" {
   name        = "${var.project_name}-${var.environment}-${var.worker_name}-worker"
   template_id = data.external.template.result.id
 
-  gpu_type_ids      = [var.gpu_type]
+  gpu_type_ids      = var.gpu_types
   data_center_ids   = ["CA-MTL-1"]
   network_volume_id = var.network_volume_id != null ? var.network_volume_id : (var.use_network_volume ? runpod_network_volume.models[0].id : null)
 
