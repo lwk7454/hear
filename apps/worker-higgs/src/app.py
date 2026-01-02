@@ -113,8 +113,10 @@ def initialize_engine():
     
     return engine.serve_engine
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+def ensure_infrastructure():
+    """
+    Ensures that Supabase buckets and local model storage are ready.
+    """
     try:
         buckets = supabase.storage.list_buckets()
         bucket_names = [b.name for b in buckets]
@@ -129,10 +131,11 @@ async def lifespan(app: FastAPI):
     # 1. Ensure Persistent Storage is provisioned
     ensure_models_locally()
 
-    # 2. Initialize Engine (unless it's already done by /initialize in FC)
-    # In regular usage (local/runpod), it's done here.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # For local development / standard FastAPI usage
+    ensure_infrastructure()
     initialize_engine()
-    
     yield
 
 app = FastAPI(title="Hear Higgs Worker (Boson AI V2)", lifespan=lifespan)

@@ -76,5 +76,13 @@ module "worker" {
 # --- Outputs ---
 
 output "runpod_endpoint_url" {
-  value = module.worker.endpoint_url
+  value = module.worker.runpod_endpoint_url
+}
+
+output "template_id" {
+  value = module.worker.template_id
+}
+
+output "network_volume_id" {
+  value = module.worker.network_volume_id
 }

@@ -306,7 +306,33 @@ def process_audio(req: ProcessRequest):
         if work_dir.exists():
             shutil.rmtree(work_dir)
 
+def handler(job):
+    """
+    RunPod Serverless Handler
+    """
+    job_input = job.get("input", {})
+    action = job_input.get("action", "health")
+
+    if action == "health":
+        return read_root()
+
+    if action == "process":
+        try:
+            req = ProcessRequest(**job_input)
+            return process_audio(req)
+        except Exception as e:
+            import traceback
+            return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
+    
+    return {"status": "error", "message": f"Unknown action: {action}"}
+
 if __name__ == "__main__":
-    import uvicorn
-    # Listen on 0.0.0.0 to accept connections from other machines (e.g. Mac accessing Windows)
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    if os.getenv("RUNPOD_SERVERLESS", "false").lower() == "true":
+        import runpod
+        print("--> Starting RunPod Serverless Worker...")
+        runpod.serverless.start({"handler": handler})
+    else:
+        import uvicorn
+        print("--> Starting Local Development Server on port 8001...")
+        # Listen on 0.0.0.0 to accept connections from other machines (e.g. Mac accessing Windows)
+        uvicorn.run(app, host="0.0.0.0", port=8001)

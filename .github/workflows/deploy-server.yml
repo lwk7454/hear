@@ -59,6 +59,7 @@ jobs:
           context: .
           file: ./apps/server/Dockerfile
           push: true
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -127,7 +128,7 @@ jobs:
             echo "Stopping (Terminating) pod $POD_ID..."
             curl -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
               -H "Content-Type: application/json" \
-              -d '{"query": "mutation { podTerminate(input: { podId: \"'$POD_ID'\" }) { id } }"}'
+              -d '{"query": "mutation { podTerminate(input: { podId: \"'$POD_ID'\" }) }"}'
 
           elif [ "$ACTION" == "start" ] || [ "$ACTION" == "deploy" ]; then
             echo "🔄 Recreating Pod (Terminate + Deploy)..."
@@ -136,7 +137,7 @@ jobs:
             if [ ! -z "$POD_ID" ]; then
                curl -s -X POST "https://api.runpod.io/graphql?api_key=${API_KEY}" \
                 -H "Content-Type: application/json" \
-                -d '{"query": "mutation { podTerminate(input: { podId: \"'$POD_ID'\" }) { id } }"}'
+                -d '{"query": "mutation { podTerminate(input: { podId: \"'$POD_ID'\" }) }"}'
                echo "   - Old pod terminated."
                sleep 5 # Wait brief moment
             fi

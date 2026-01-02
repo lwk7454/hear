@@ -57,6 +57,14 @@ resource "runpod_endpoint" "worker" {
   }
 }
 
-output "endpoint_url" {
+output "runpod_endpoint_url" {
   value = "https://api.runpod.ai/v2/${runpod_endpoint.worker.id}/run"
+}
+
+output "template_id" {
+  value = data.external.template.result.id
+}
+
+output "network_volume_id" {
+  value = var.network_volume_id != null ? var.network_volume_id : (var.use_network_volume ? runpod_network_volume.models[0].id : null)
 }

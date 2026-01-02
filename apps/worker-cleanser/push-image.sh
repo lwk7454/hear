@@ -11,7 +11,7 @@ IMAGE_URL="$REGISTRY/$GITHUB_USER/$IMAGE_NAME:$TAG"
 echo "== Building $IMAGE_NAME =="
 
 # Build the image
-docker build -t $IMAGE_NAME .
+docker build --platform linux/amd64 -t $IMAGE_NAME .
 
 # Tag for GHCR
 docker tag $IMAGE_NAME $IMAGE_URL

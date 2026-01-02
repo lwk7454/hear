@@ -35,7 +35,7 @@ FULL_IMAGE_PATH="$REGISTRY/$GITHUB_USERNAME/$IMAGE_NAME:latest"
 
 echo "🚀 Building image: $FULL_IMAGE_PATH"
 # Use --quiet or similar if possible, but let's stick to standard build for feedback
-docker build -t "$FULL_IMAGE_PATH" .
+docker build --platform linux/amd64 -t "$FULL_IMAGE_PATH" .
 
 if [ $? -ne 0 ]; then
     echo "❌ Build failed"

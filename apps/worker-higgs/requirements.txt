@@ -21,6 +21,8 @@ loguru
 descript-audio-codec
 vector-quantize-pytorch
 dacite
+runpod
+soundfile
 
 # AI Core (Pinned for compatibility)
 --extra-index-url https://download.pytorch.org/whl/cu121
