@@ -10,11 +10,10 @@ import torchaudio
 from scipy.spatial.distance import cosine
 from pathlib import Path
 from pyannote.audio import Inference
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Optional
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from pydantic import BaseModel
+from typing import Optional
 
 # 1. Load Environment (Local)
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,7 +25,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 HF_TOKEN = os.getenv("HF_TOKEN") # Required for Pyannote
 
-app = FastAPI(title="Hear GPU Worker (Cleanser)")
+# supabase: Optional[Client] = None (handled below)
 
 # Setup Supabase
 supabase: Optional[Client] = None
@@ -40,11 +39,9 @@ class ProcessRequest(BaseModel):
     creator_id: str
     voice_sample_url: Optional[str] = None
 
-@app.get("/")
 def read_root():
     return {"status": "online", "service": "hear-gpu-worker", "gpu": True}
 
-@app.post("/process")
 def process_audio(req: ProcessRequest):
     print(f"--> Processing {req.audio_url} for {req.creator_id}")
     
@@ -300,7 +297,7 @@ def process_audio(req: ProcessRequest):
         print(f"ERROR: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise Exception(str(e))
     finally:
         # Cleanup
         if work_dir.exists():
@@ -327,12 +324,6 @@ def handler(job):
     return {"status": "error", "message": f"Unknown action: {action}"}
 
 if __name__ == "__main__":
-    if os.getenv("RUNPOD_SERVERLESS", "false").lower() == "true":
-        import runpod
-        print("--> Starting RunPod Serverless Worker...")
-        runpod.serverless.start({"handler": handler})
-    else:
-        import uvicorn
-        print("--> Starting Local Development Server on port 8001...")
-        # Listen on 0.0.0.0 to accept connections from other machines (e.g. Mac accessing Windows)
-        uvicorn.run(app, host="0.0.0.0", port=8001)
+    import runpod
+    print("--> Starting RunPod Serverless Worker...")
+    runpod.serverless.start({"handler": handler})

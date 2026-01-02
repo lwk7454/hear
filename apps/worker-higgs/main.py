@@ -1,8 +1,7 @@
 import os
-import uvicorn
 import runpod
 import asyncio
-from src.app import app, initialize_engine, ensure_infrastructure
+from src.app import initialize_engine, ensure_infrastructure
 from src.routes.chat import chat_generate
 from src.routes.tts import synthesize
 from src.routes.root import read_root
@@ -42,10 +41,5 @@ async def handler(job):
         return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
 
 if __name__ == "__main__":
-    if os.getenv("RUNPOD_SERVERLESS", "false").lower() == "true":
-        print("--> Starting RunPod Serverless Worker...")
-        runpod.serverless.start({"handler": handler})
-    else:
-        print(f"--> Starting Local Development Server on port {PORT}...")
-        # Listen on 0.0.0.0 to accept connections from other machines (e.g. Mac accessing Windows)
-        uvicorn.run(app, host="0.0.0.0", port=PORT)
+    print("--> Starting RunPod Serverless Worker...")
+    runpod.serverless.start({"handler": handler})
