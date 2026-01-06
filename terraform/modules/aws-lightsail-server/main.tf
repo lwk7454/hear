@@ -67,16 +67,11 @@ resource "aws_lightsail_instance" "server" {
     # 3. Setup Application Directory
     mkdir -p /home/ubuntu/apps/server
     chown -R ubuntu:ubuntu /home/ubuntu/apps
-    
-    # 4. Write ENV VARS to .env
-    cat <<EOT > /home/ubuntu/apps/server/.env
-    %{for key, value in var.env_vars~}
-    ${key}=${value}
-    %{endfor~}
-    EOT
-    
-    chown ubuntu:ubuntu /home/ubuntu/apps/server/.env
   EOF
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }
 
 # 3. Networking & Security
@@ -84,15 +79,19 @@ resource "aws_lightsail_instance_public_ports" "server_ports" {
   instance_name = aws_lightsail_instance.server.name
 
   port_info {
-    protocol  = "tcp"
-    from_port = 22
-    to_port   = 22
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidrs      = ["0.0.0.0/0"]
+    ipv6_cidrs = ["::/0"]
   }
 
   port_info {
-    protocol  = "tcp"
-    from_port = 8000
-    to_port   = 8000
+    protocol   = "tcp"
+    from_port  = 8000
+    to_port    = 8000
+    cidrs      = ["0.0.0.0/0"]
+    ipv6_cidrs = ["::/0"]
   }
 }
 
@@ -104,4 +103,43 @@ resource "aws_lightsail_static_ip" "server_ip" {
 resource "aws_lightsail_static_ip_attachment" "server_ip_attachment" {
   static_ip_name = aws_lightsail_static_ip.server_ip.name
   instance_name  = aws_lightsail_instance.server.name
+}
+
+# 5. Environment Variable Updates (Avoids Instance Replacement)
+# This resource manages the .env file exclusively using the explicit var.env_vars map.
+resource "terraform_data" "env_update" {
+  triggers_replace = [
+    aws_lightsail_instance.server.id,
+    sha256(jsonencode(var.env_vars))
+  ]
+
+  connection {
+    type        = "ssh"
+    user        = "ubuntu"
+    private_key = aws_lightsail_key_pair.server_key.private_key
+    host        = aws_lightsail_static_ip.server_ip.ip_address
+  }
+
+  provisioner "file" {
+    content     = join("\n", [for k, v in var.env_vars : "${k}=${v}"])
+    destination = "/tmp/.env_update"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo '🚀 Environment variables updated, sync to server...'",
+      "mkdir -p /home/ubuntu/apps/server",
+      "mv -f /tmp/.env_update /home/ubuntu/apps/server/.env",
+      "chown ubuntu:ubuntu /home/ubuntu/apps/server/.env",
+      "if command -v pm2 > /dev/null && pm2 list | grep -q 'server'; then",
+      "  echo '🔄 PM2: Restarting server with new env...'",
+      "  pm2 restart /home/ubuntu/apps/server/ecosystem.config.cjs --update-env",
+      "else",
+      "  echo '⚠️ PM2: Server process not found, skipping restart.'",
+      "fi",
+      "echo '✅ Update complete!'"
+    ]
+  }
+
+  depends_on = [aws_lightsail_static_ip_attachment.server_ip_attachment]
 }

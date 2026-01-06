@@ -202,17 +202,18 @@ module "aws_server" {
     DATABASE_URL         = "postgres://postgres.${var.project_id}:${data.aws_ssm_parameter.db_password.value}@aws-1-ca-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
     SUPABASE_URL         = data.aws_ssm_parameter.supabase_url.value
     SUPABASE_SERVICE_KEY = data.aws_ssm_parameter.supabase_service_key.value
-    CORS_ORIGINS         = "https://${local.web_domain},http://localhost:3000"
+    CORS_ORIGINS         = "https://${local.web_domain}"
+    FRONTEND_URL         = "https://${local.web_domain}"
 
     # Auth
     # Auth
-    GOOGLE_LOGIN_REDIRECT_URI = "https://${local.api_domain}/api/auth/login/google/callback"
+    GOOGLE_LOGIN_REDIRECT_URI = "https://${local.api_domain}/auth/login/google/callback"
     YOUTUBE_CLIENT_ID         = data.aws_ssm_parameter.youtube_client_id.value
     YOUTUBE_CLIENT_SECRET     = data.aws_ssm_parameter.youtube_client_secret.value
-    YOUTUBE_REDIRECT_URI      = "https://${local.api_domain}/api/auth/youtube/callback"
+    YOUTUBE_REDIRECT_URI      = "https://${local.api_domain}/auth/youtube/callback"
     IG_CLIENT_ID              = data.aws_ssm_parameter.ig_client_id.value
     IG_CLIENT_SECRET          = data.aws_ssm_parameter.ig_client_secret.value
-    IG_REDIRECT_URI           = "https://${local.api_domain}/api/auth/instagram/callback"
+    IG_REDIRECT_URI           = "https://${local.api_domain}/auth/instagram/callback"
     IDLE_TIMEOUT              = "300000"
 
     # RunPod (if needed by server)

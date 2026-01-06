@@ -16,6 +16,7 @@ const OAuthCallbackSchema = z.object({
 });
 
 // Helper for Google Login
+if (!process.env.FRONTEND_URL) throw new Error("Missing FRONTEND_URL");
 if (!process.env.GOOGLE_LOGIN_REDIRECT_URI) throw new Error("Missing GOOGLE_LOGIN_REDIRECT_URI");
 if (!process.env.YOUTUBE_CLIENT_ID) throw new Error("Missing YOUTUBE_CLIENT_ID (used for Google Login)");
 if (!process.env.YOUTUBE_CLIENT_SECRET) throw new Error("Missing YOUTUBE_CLIENT_SECRET (used for Google Login)");
@@ -92,7 +93,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 sameSite: 'lax'
             });
 
-            return reply.redirect('http://localhost:3000/creator');
+            return reply.redirect(`${process.env.FRONTEND_URL}/creator`);
         } catch (e) {
             console.error(e);
             return reply.code(500).send({ error: 'Login failed' });
@@ -154,7 +155,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            return reply.redirect('http://localhost:3000/creator?connected=youtube');
+            return reply.redirect(`${process.env.FRONTEND_URL}/creator?connected=youtube`);
 
         } catch (e) {
             console.error(e);
@@ -215,7 +216,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            return reply.redirect('http://localhost:3000/creator?connected=instagram');
+            return reply.redirect(`${process.env.FRONTEND_URL}/creator?connected=instagram`);
 
         } catch (e) {
             console.error(e);
