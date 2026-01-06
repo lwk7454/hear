@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "target": "esnext",
     "sourceMap": true,
     "declaration": true,
@@ -19,6 +19,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "allowImportingTsExtensions": false,
+    "esModuleInterop": true,
     "types": [
       "node"
     ]

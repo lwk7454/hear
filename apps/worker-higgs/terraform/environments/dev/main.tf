@@ -17,9 +17,19 @@ provider "runpod" {
   api_key = var.runpod_api_key
 }
 
-# provider "supabase" {
-#   access_token = var.supabase_access_token
-# }
+provider "aws" {
+  region = "ca-central-1"
+}
+
+# --- SSM Parameters ---
+data "aws_ssm_parameter" "supabase_url" {
+  name = "/hear/${var.environment}/SUPABASE_URL"
+}
+
+data "aws_ssm_parameter" "supabase_service_key" {
+  name            = "/hear/${var.environment}/SUPABASE_SERVICE_KEY"
+  with_decryption = true
+}
 
 # --- Variables ---
 
@@ -46,24 +56,6 @@ variable "github_username" {
   type = string
 }
 
-variable "supabase_project_id" {
-  type = string
-}
-
-variable "supabase_access_token" {
-  type      = string
-  sensitive = true
-}
-
-variable "supabase_url" {
-  type = string
-}
-
-variable "supabase_service_role_key" {
-  type      = string
-  sensitive = true
-}
-
 # --- Modules ---
 
 module "worker" {
@@ -83,20 +75,11 @@ module "worker" {
   env_vars = {
     HIGGS_MODEL_PATH          = "/runpod-volume/models/higgs"
     HIGGS_TOKENIZER_PATH      = "/runpod-volume/models/tokenizer"
-    SUPABASE_URL              = var.supabase_url
-    SUPABASE_SERVICE_ROLE_KEY = var.supabase_service_role_key
+    SUPABASE_URL              = data.aws_ssm_parameter.supabase_url.value
+    SUPABASE_SERVICE_ROLE_KEY = data.aws_ssm_parameter.supabase_service_key.value
     ENV                       = var.environment
   }
 }
-
-# module "supabase" {
-#   source = "../../modules/supabase-config"
-# 
-#   project_id                = var.supabase_project_id
-#   environment               = var.environment
-#   supabase_url              = var.supabase_url
-#   supabase_service_role_key = var.supabase_service_role_key
-# }
 
 # --- Outputs ---
 

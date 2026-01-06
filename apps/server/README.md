@@ -48,3 +48,7 @@ To bypass YouTube's "Sign in to confirm you're not a bot" errors, the server use
 *   **Rate Limits**: A single cookie file + IP can typically handle **200-500 downloads per day** safely.
     *   *Tip*: Using a YouTube Premium account reduces the chance of flagging.
 *   **Scaling**: If you need thousands of daily downloads, you will need to implement IP Rotation (Proxies) in the `yt-dlp` configuration.
+
+## Deployment
+
+For production deployment instructions (AWS Lightsail), please refer to **[Deployment & Infrastructure Manual](../../docs/deployment.md)**.

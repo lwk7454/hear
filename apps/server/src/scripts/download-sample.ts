@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { AudioService } from '../services/audio';
+import { AudioService } from '../services/audio.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';

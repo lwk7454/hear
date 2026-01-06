@@ -17,8 +17,26 @@ provider "runpod" {
   api_key = var.runpod_api_key
 }
 
-# --- Variables ---
+provider "aws" {
+  region = "ca-central-1"
+}
 
+# --- SSM Parameters ---
+data "aws_ssm_parameter" "supabase_url" {
+  name = "/hear/${var.environment}/SUPABASE_URL"
+}
+
+data "aws_ssm_parameter" "supabase_service_key" {
+  name            = "/hear/${var.environment}/SUPABASE_SERVICE_KEY"
+  with_decryption = true
+}
+
+data "aws_ssm_parameter" "hf_token" {
+  name            = "/hear/${var.environment}/HF_TOKEN"
+  with_decryption = true
+}
+
+# --- Variables ---
 variable "project_name" {
   type    = string
   default = "hear"
@@ -37,20 +55,6 @@ variable "github_username" {
   type = string
 }
 
-variable "supabase_url" {
-  type = string
-}
-
-variable "supabase_service_role_key" {
-  type      = string
-  sensitive = true
-}
-
-variable "hf_token" {
-  type      = string
-  sensitive = true
-}
-
 # --- Modules ---
 
 module "worker" {
@@ -66,9 +70,9 @@ module "worker" {
   container_port  = 8001
 
   env_vars = {
-    SUPABASE_URL         = var.supabase_url
-    SUPABASE_SERVICE_KEY = var.supabase_service_role_key
-    HF_TOKEN             = var.hf_token
+    SUPABASE_URL         = data.aws_ssm_parameter.supabase_url.value
+    SUPABASE_SERVICE_KEY = data.aws_ssm_parameter.supabase_service_key.value
+    HF_TOKEN             = data.aws_ssm_parameter.hf_token.value
     ENV                  = var.environment
   }
 }

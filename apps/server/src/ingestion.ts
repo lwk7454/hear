@@ -1,16 +1,16 @@
 import { FastifyInstance } from 'fastify'
 import { google } from 'googleapis'
 import { z } from 'zod'
-import { TranscriptProcessor } from './services/processor'
-import { AudioCleaner } from './services/cleaner'
-import { HiggsService } from './services/higgs'
-import { AudioService } from './services/audio'
-import { InstagramService } from './services/instagram'
-import { YouTubeService } from './services/youtube'
-import { VisionService } from './services/vision'
-import { RAGService } from './services/rag'
-import { BioService } from './services/bio'
-import { FactHistorian } from './services/historian'
+import { TranscriptProcessor } from './services/processor.js'
+import { AudioCleaner } from './services/cleaner.js'
+import { HiggsService } from './services/higgs.js'
+import { AudioService } from './services/audio.js'
+import { InstagramService } from './services/instagram.js'
+import { YouTubeService } from './services/youtube.js'
+import { VisionService } from './services/vision.js'
+import { RAGService } from './services/rag.js'
+import { BioService } from './services/bio.js'
+import { FactHistorian } from './services/historian.js'
 
 // Schema for Step 1: Discovery
 const DiscoverySchema = z.object({
@@ -27,9 +27,9 @@ const ParseContentSchema = z.object({
   url: z.string().url()
 });
 
-import { isAdminUser, verifyUser } from './lib/auth';
+import { isAdminUser, verifyUser } from './lib/auth.js';
 
-import { prisma } from './lib/db';
+import { prisma } from './lib/db.js';
 
 /**
  * Step 1: Discovery Phase
@@ -85,7 +85,7 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
         const videos = await ytService.getPlaylistItems(uploadsId, 10);
         
         // 4. Deep Scan: Comments & Replies
-        const itemsWithEngagement = await Promise.all(videos.map(async (v) => {
+        const itemsWithEngagement = await Promise.all(videos.map(async (v: any) => {
             const videoId = v.contentDetails?.videoId || "";
             if (!videoId) return null;
 
@@ -101,7 +101,7 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
             console.log(`[Engage] V:${videoId} | Mine:${channelId} | Comments:${comments.length}`);
 
             // Filter: Find threads where the creator (channelId) has participated
-            const relevantThreads = comments.filter(thread => {
+            const relevantThreads = comments.filter((thread: any) => {
                 const topLevel = thread.snippet?.topLevelComment?.snippet;
                 const replies = thread.replies?.comments || [];
                 
@@ -109,16 +109,16 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
                 const isCreatorTop = topLevel?.authorChannelId?.value === channelId;
                 
                 // Did creator reply?
-                const hasCreatorReply = replies.some(r => r.snippet?.authorChannelId?.value === channelId);
+                const hasCreatorReply = replies.some((r: any) => r.snippet?.authorChannelId?.value === channelId);
                 
                 if (isCreatorTop || hasCreatorReply) {
                      console.log(`[Match] Thread ${thread.id} has creator interaction.`);
                 }
                 
                 return isCreatorTop || hasCreatorReply;
-            }).map(thread => {
+            }).map((thread: any) => {
                 const top = thread.snippet?.topLevelComment?.snippet;
-                const creatorReply = thread.replies?.comments?.find(r => r.snippet?.authorChannelId?.value === channelId);
+                const creatorReply = thread.replies?.comments?.find((r: any) => r.snippet?.authorChannelId?.value === channelId);
                 
                 return {
                     id: thread.id,
@@ -174,7 +174,7 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
         }));
 
         return {
-            items: itemsWithEngagement.filter(i => i !== null)
+            items: itemsWithEngagement.filter((i: any) => i !== null)
         };
 
     } else if (platform === 'instagram') {
@@ -239,7 +239,7 @@ async function discoverContent(creatorId: string, platform: string, authCode?: s
  * Step 2: Content Parsing Phase
  * Heavy lifting: Download, Demucs, Transcribe, Higgs.
  */
-import { storageService } from './services/storage'
+import { storageService } from './services/storage.js'
 
 async function parseContentItem(creatorId: string, item: { url: string, type: string, contentId?: string }) {
     console.log(`[Parser] Processing ${item.type} from ${item.url}...`);
@@ -617,7 +617,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
           // Delete files for each item
           for (const item of items) {
               if (item.audioPath) {
-                  await storageService.delete(item.audioPath).catch(err => console.error(`Failed to delete file for ${item.id}`, err));
+                  await storageService.delete(item.audioPath).catch((err: any) => console.error(`Failed to delete file for ${item.id}`, err));
               }
           }
 

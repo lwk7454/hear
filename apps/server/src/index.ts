@@ -1,27 +1,21 @@
 import 'dotenv/config'
 import Fastify, { FastifyInstance } from 'fastify'
-import { authRoutes } from './routes/auth'
-import { storageService } from './services/storage'
+import { authRoutes } from './routes/auth.js'
+import { storageService } from './services/storage.js'
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import jwt from '@fastify/jwt'
 import cookie from '@fastify/cookie'
 import fastifyMultipart from '@fastify/multipart'
-import { GLMVoiceClient } from './glm-voice-client'
-import { ingestionRoutes } from './ingestion'
-import { voiceRoutes } from './routes/voice'
-import { chatRoutes } from './routes/chat'
-import { factRoutes } from './routes/facts'
+import { GLMVoiceClient } from './glm-voice-client.js'
+import { ingestionRoutes } from './ingestion.js'
+import { voiceRoutes } from './routes/voice.js'
+import { chatRoutes } from './routes/chat.js'
+import { factRoutes } from './routes/facts.js'
 import { RealTimeVAD } from "@ericedouard/vad-node-realtime"
-import axios from 'axios'
 
-let lastActiveAt = Date.now()
-const IDLE_TIMEOUT = process.env.IDLE_TIMEOUT ? parseInt(process.env.IDLE_TIMEOUT) : 15 * 60 * 1000 // Default 15m
-const CHECK_INTERVAL = 60 * 1000 // 1 minute
 
-function updateActivity() {
-  lastActiveAt = Date.now()
-}
+
 
 const server: FastifyInstance = Fastify({
   logger: true
@@ -60,10 +54,7 @@ const start = async () => {
     })
     await server.register(websocket)
 
-    // Activity Tracker Hook
-    server.addHook('onRequest', async (request, reply) => {
-      updateActivity()
-    })
+
 
     server.register(jwt, {
       secret: process.env.JWT_SECRET || 'supersecret123',
@@ -127,7 +118,7 @@ const start = async () => {
             await vad.processAudio(float32Array)
 
             // Proxy to GLM
-            updateActivity()
+
             glm.sendAudioChunk(message)
           })
 
@@ -143,48 +134,12 @@ const start = async () => {
     // 4. Start Server
     await storageService.ensureBucket();
     
-    // Self-Register Pod ID
-    const podId = process.env.RUNPOD_POD_ID || process.env.SERVER_POD_ID
-    if (podId) {
-      const { prisma } = await import('./lib/db')
-      await prisma.configuration.upsert({
-        where: { key: 'SERVER_POD_ID' },
-        update: { value: podId },
-        create: { key: 'SERVER_POD_ID', value: podId }
-      })
-      server.log.info({ podId }, 'Updated SERVER_POD_ID in DB Configuration')
-    }
+
 
     await server.listen({ port: 8000, host: '0.0.0.0' })
     console.log('Server listening on http://localhost:8000')
 
-    // Auto-Stop Timer
-    server.log.info({ idleTimeout: IDLE_TIMEOUT, checkInterval: CHECK_INTERVAL }, 'Auto-stop timer started')
-    setInterval(async () => {
-      const idleTime = Date.now() - lastActiveAt
-      if (idleTime > IDLE_TIMEOUT) {
-        const podId = process.env.SERVER_POD_ID || process.env.RUNPOD_POD_ID
-        const apiKey = process.env.RUNPOD_API_KEY
-        
-        if (podId && apiKey) {
-          server.log.info({ podId, idleTime }, 'Idle timeout reached. Stopping RunPod pod...')
-          try {
-            await axios.post(
-              `https://api.runpod.io/graphql?api_key=${apiKey}`,
-              {
-                query: `mutation { podStop(input: { podId: "${podId}" }) { id } }`
-              }
-            )
-            server.log.info('Pod stop mutation sent. Exiting...')
-            process.exit(0)
-          } catch (err: any) {
-            server.log.error({ err: err.message }, 'Failed to stop RunPod pod')
-          }
-        } else {
-          server.log.warn({ podId: !!podId, apiKey: !!apiKey }, 'Idle timeout reached but missing Pod ID or API Key. Skipping auto-stop.')
-        }
-      }
-    }, CHECK_INTERVAL)
+
   } catch (err) {
     server.log.error(err)
     process.exit(1)

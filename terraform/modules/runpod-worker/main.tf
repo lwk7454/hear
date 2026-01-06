@@ -41,7 +41,7 @@ resource "runpod_endpoint" "worker" {
   data_center_ids   = ["CA-MTL-1"]
   network_volume_id = var.network_volume_id != null ? var.network_volume_id : (var.use_network_volume ? runpod_network_volume.models[0].id : null)
 
-  idle_timeout = 60 # Scale to zero after 60s of idleness
+  idle_timeout = 5 # Scale to zero
 
   scaler_type  = "QUEUE_DELAY"
   scaler_value = 10

@@ -35,11 +35,11 @@
 
 ## Phase 2: Memory & Persona (The "Brain")
 - [ ] **Memory Infrastructure**
-    - [ ] Setup Vector DB (pgvector or Qdrant)
+    - [x] Setup Vector DB (pgvector)
     - [ ] Integrate Letta (MemGPT) for long-term state
-- [ ] **Persona Management**
-    - [ ] Create Creator Dashboard for Persona configuration
-    - [ ] Implement System Prompt builder
+- [x] **Persona Management**
+    - [x] Create Creator Dashboard for Persona configuration
+    - [x] Implement System Prompt builder (Facts + Bio)
 
 ## Phase 3: Monetization & Creator Economy
 - [ ] **Billing Infrastructure**

@@ -6,13 +6,20 @@ cd "$(dirname "$0")"
 
 echo "🚀 Deploying Server to RunPod Dev..."
 
-# 1. Apply Terraform
+# 1. Apply Terraform (Handle optional backend config)
 cd terraform/environments/dev
+INIT_ARGS=""
+if [ -f "backend.tfvars" ]; then
+    echo "ℹ️  Using backend.tfvars for initialization"
+    INIT_ARGS="-backend-config=backend.tfvars"
+fi
+
+terraform init -reconfigure $INIT_ARGS
 terraform apply -auto-approve
 
-# 2. Extract Pod ID
-POD_ID=$(terraform output -raw pod_id)
-echo "✅ Deployment Complete. New Pod ID: $POD_ID"
+# 2. Extract Server URL
+SERVER_URL=$(terraform output -raw server_url)
+echo "✅ Deployment Complete. Server URL: $SERVER_URL"
 
 # 3. Update GitHub Secrets
 echo "🔄 Updating GitHub Secrets..."
@@ -36,10 +43,8 @@ if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
     fi
 fi
 
-# Update SERVER_POD_ID (Used by deploy-server workflow for restarts)
-# Note: GitHub Actions now uses Pod Name matching, so this secret is no longer needed in GH.
-# gh secret set SERVER_POD_ID --body "$POD_ID"
-# echo "   - Updated SERVER_POD_ID in GitHub"
+# Update SERVER_URL (Optional, for reference or future use)
+# gh secret set SERVER_URL --body "$SERVER_URL"
 
 
 # Ensure Web App uses Stable Proxy (Set once, or ensure sync)

@@ -1,4 +1,4 @@
-import { LLMService } from './llm';
+import { LLMService } from './llm.js';
 
 export class EngagementProcessor {
   private llm: LLMService;

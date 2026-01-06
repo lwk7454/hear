@@ -1,9 +1,9 @@
 
 import { FastifyInstance } from 'fastify';
 import { google } from 'googleapis';
-import { prisma } from '../lib/db';
+import { prisma } from '../lib/db.js';
 import { z } from 'zod';
-import { isAdminUser, verifyUser } from '../lib/auth';
+import { isAdminUser, verifyUser } from '../lib/auth.js';
 
 const OAuthUrlSchema = z.object({
     creatorId: z.string().optional(), // Optional if logged in

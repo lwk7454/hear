@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/db'
-import { verifyUser } from '../lib/auth'
+import { prisma } from '../lib/db.js'
+import { verifyUser } from '../lib/auth.js'
 
 const FactUpdateSchema = z.object({
   content: z.string().optional(),

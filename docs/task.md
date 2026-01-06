@@ -44,6 +44,6 @@
 - [ ] **Guardrails**
     - [ ] Integrate Llama Guard 3 pipeline
     - [ ] Implement Audio Watermarking
-- [ ] **Deployment**
-    - [ ] Dockerize services
-    - [ ] CI/CD pipeline setup
+- [x] **Deployment**
+    - [x] Dockerize services
+    - [x] CI/CD pipeline setup (AWS Lightsail + S3)

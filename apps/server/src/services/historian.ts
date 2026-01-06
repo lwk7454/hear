@@ -1,5 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { prisma } from "../lib/db";
+import { prisma } from "../lib/db.js";
 import { z } from "zod";
 
 const FactExtractionSchema = z.object({

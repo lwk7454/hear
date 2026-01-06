@@ -1,16 +1,19 @@
-name: Deploy Higgs Worker
+name: Reusable Worker Build & Push
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'apps/worker-higgs/**'
-      - '.github/workflows/deploy-worker-higgs.yml'
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      app_name:
+        required: true
+        type: string
+        description: "Scanning directory in apps/ (e.g. worker-cleanser)"
+      image_name:
+        required: true
+        type: string
+        description: "Docker image name suffix (e.g. worker-cleanser)"
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: worker-higgs
 
 jobs:
   build-and-push:
@@ -18,7 +21,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,7 +40,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ inputs.image_name }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=short
@@ -45,7 +48,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./apps/worker-higgs
+          context: ./apps/${{ inputs.app_name }}
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}

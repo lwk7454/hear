@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify'
-import { prisma } from '../lib/db'
-import { storageService } from '../services/storage'
+import { prisma } from '../lib/db.js'
+import { storageService } from '../services/storage.js'
 import fs from 'fs'
-import { verifyUser } from '../lib/auth'
+import { verifyUser } from '../lib/auth.js'
 
 export async function voiceRoutes(fastify: FastifyInstance) {
 

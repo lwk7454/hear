@@ -28,7 +28,7 @@ export default function Home() {
             </div>
             
             <h1 className="text-6xl md:text-8xl font-bold tracking-tighter leading-[1.1]">
-                Clone your <br/>
+                Clone your<br/>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 to-purple-400">Digital Twin.</span>
             </h1>
             

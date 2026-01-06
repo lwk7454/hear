@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { prisma } from "../lib/db";
+import { prisma } from "../lib/db.js";
 import { pipeline, env } from '@xenova/transformers';
 
 // Configure Transformers.js environment for stability in Node.js

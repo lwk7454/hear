@@ -1,0 +1,118 @@
+name: Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      infra:
+        description: 'Force Deploy Infrastructure'
+        type: boolean
+        required: false
+        default: false
+      server:
+        description: 'Force Deploy Server'
+        type: boolean
+        required: false
+        default: false
+      web:
+        description: 'Force Deploy Web'
+        type: boolean
+        required: false
+        default: false
+      cleanser:
+        description: 'Force Deploy Worker Cleanser'
+        type: boolean
+        required: false
+        default: false
+      higgs:
+        description: 'Force Deploy Worker Higgs'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+jobs:
+  # 1. Change Detection
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      server: ${{ steps.filter.outputs.server }}
+      web: ${{ steps.filter.outputs.web }}
+      cleanser: ${{ steps.filter.outputs.cleanser }}
+      higgs: ${{ steps.filter.outputs.higgs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'terraform/**'
+              - '.github/workflows/reusable-deploy-infra.yml'
+            server:
+              - 'apps/server/**'
+              - 'terraform/**'
+              - '.github/workflows/reusable-deploy-server.yml'
+            web:
+              - 'apps/web/**'
+              - 'apps/app/**'
+              - 'terraform/**'
+              - '.github/workflows/reusable-deploy-web.yml'
+            cleanser:
+              - 'apps/worker-cleanser/**'
+              - '.github/workflows/reusable-build-worker.yml'
+            higgs:
+              - 'apps/worker-higgs/**'
+              - '.github/workflows/reusable-build-worker.yml'
+
+  # 2. Infra
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true' || inputs.infra == true
+    uses: ./.github/workflows/reusable-deploy-infra.yml
+    secrets: inherit
+
+  # 3. Server
+  server:
+    needs: [changes, infra]
+    if: |
+      always() && 
+      (needs.changes.outputs.server == 'true' || inputs.server == true) && 
+      (needs.infra.result == 'success' || needs.infra.result == 'skipped')
+    uses: ./.github/workflows/reusable-deploy-server.yml
+    secrets: inherit
+
+  # 4. Web
+  web:
+    needs: [changes, infra]
+    if: |
+      always() && 
+      (needs.changes.outputs.web == 'true' || inputs.web == true) && 
+      (needs.infra.result == 'success' || needs.infra.result == 'skipped')
+    uses: ./.github/workflows/reusable-deploy-web.yml
+    secrets: inherit
+
+  # 5. Workers (Parallel)
+  worker-cleanser:
+    needs: [changes]
+    if: needs.changes.outputs.cleanser == 'true' || inputs.cleanser == true
+    uses: ./.github/workflows/reusable-build-worker.yml
+    with:
+      app_name: 'worker-cleanser'
+      image_name: 'worker-cleanser'
+    secrets: inherit
+
+  worker-higgs:
+    needs: [changes]
+    if: needs.changes.outputs.higgs == 'true' || inputs.higgs == true
+    uses: ./.github/workflows/reusable-build-worker.yml
+    with:
+      app_name: 'worker-higgs'
+      image_name: 'worker-higgs'
+    secrets: inherit

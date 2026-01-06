@@ -1,0 +1,139 @@
+name: Reusable Server Deploy
+
+on:
+  workflow_call:
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+concurrency:
+  group: deploy-server-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Build Application
+        run: |
+          pnpm install
+          pnpm --filter db run generate
+          pnpm --filter server run build
+          # Prune dev dependencies for cleaner artifact (optional, skipping for speed/simplicity)
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ca-central-1
+
+      - name: Deploy to Lightsail via SSH
+        env:
+          SERVICE_NAME: hear-dev-server
+        run: |
+          echo "🚀 Starting SSH Deployment..."
+
+          # 1. Fetch Private Key from SSM
+          echo "🔑 Fetching SSH Key..."
+          PRIVATE_KEY=$(aws ssm get-parameter \
+            --name "/hear/dev/SERVER_SSH_KEY" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text --region ca-central-1)
+
+          if [ -z "$PRIVATE_KEY" ]; then
+            echo "❌ Failed to fetch SSH key from SSM."
+            exit 1
+          fi
+
+          # Setup SSH Agent
+          mkdir -p ~/.ssh
+          echo "$PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          # 2. Find Instance Public IP (Dual Stack)
+          echo "🔎 Locate Instance IP..."
+          INSTANCE_IP=$(aws lightsail get-instance \
+            --instance-name "hear-dev-server" \
+            --region ca-central-1 \
+            --query "instance.publicIpAddress" \
+            --output text)
+
+          if [ "$INSTANCE_IP" == "None" ] || [ -z "$INSTANCE_IP" ]; then
+             echo "❌ Failed to find public IP for hear-dev-server"
+             exit 1
+          fi
+          
+          echo "✅ Found Instance IP: $INSTANCE_IP"
+
+          # Add to known_hosts (scan keys)
+          ssh-keyscan -H "$INSTANCE_IP" >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # 3. Rsync Code
+          # 3. Create Artifact (Tarball)
+          echo "📦 Creating artifact..."
+          # Build locally installed node_modules to avoid OOM on server
+          # Prune dev dependencies first? We need db migration tools though.
+          # Ideally we deploy dev deps too for now or separate them.
+          # For simplicity and robust prisma generate, we ship everything.
+          
+          # We need to preserve structure apps/server and packages/
+          tar -czf artifact.tar.gz \
+            --exclude '.git' \
+            --exclude '.env' \
+            apps/server \
+            packages \
+            package.json \
+            pnpm-lock.yaml \
+            pnpm-workspace.yaml \
+            node_modules
+
+          # 4. Upload Artifact
+          echo "📤 Uploading artifact..."
+          # Use SCP to upload single file
+          scp -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=5 \
+            artifact.tar.gz ubuntu@$INSTANCE_IP:/home/ubuntu/artifact.tar.gz
+
+          # 5. Remote Extract & Restart
+          echo "🔄 Restarting Server..."
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=5 ubuntu@$INSTANCE_IP << 'EOF'
+            set -e
+            
+            echo "📂 Extracting artifact..."
+            cd /home/ubuntu
+            # Clean up old files if needed or just overwrite
+            tar -xzf artifact.tar.gz
+            rm artifact.tar.gz
+            
+            cd /home/ubuntu/apps/server
+            
+            # Since node_modules are uploaded from CI (linux-x64), they should work on linux-x64 server
+            # We skip pnpm install unless we pruned too much
+            
+            echo "Skipping Prisma Generate (already generated in CI)..."
+            # pnpm --filter db run generate
+            
+            echo "🔁 Reloading PM2..."
+            # cd apps/server <-- Redundant, already in apps/server
+            pm2 startOrReload ecosystem.config.cjs
+            pm2 save
+            
+            echo "✅ Deployment Successful!"
+          EOF

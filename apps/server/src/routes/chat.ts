@@ -1,10 +1,10 @@
 import { FastifyInstance } from 'fastify';
-import { LLMService } from '../services/llm';
-import { HiggsService } from '../services/higgs';
+import { LLMService } from '../services/llm.js';
+import { HiggsService } from '../services/higgs.js';
 import { z } from 'zod';
-import { prisma } from '../lib/db';
-import { storageService } from '../services/storage';
-import { RAGService } from '../services/rag';
+import { prisma } from '../lib/db.js';
+import { storageService } from '../services/storage.js';
+import { RAGService } from '../services/rag.js';
 
 const ChatSchema = z.object({
   text: z.string().min(1),

@@ -8,20 +8,31 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libsndfile1 \
     espeak-ng \
+    ffmpeg \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Requirements and local libraries for installation
+# Install stable dependencies (PyTorch) first with cache mount
+# This layer will stay cached even if source code or requirements change
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && \
+    pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+
+# Copy requirements and install remaining dependencies
 COPY requirements.txt .
+# We use a cache mount here as well to avoid redownloading common packages
+RUN --mount=type=cache,target=/root/.cache/pip \
+    grep -v "^-e" requirements.txt > requirements_base.txt && \
+    pip install -r requirements_base.txt
+
+# Copy local libraries and install them
 COPY lib/ ./lib/
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -e lib/higgs-audio
 
-# Install Dependencies
-# Use CUDA 12.1 index for production Linux GPU environment
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Copy source code
+# Copy source code last
+COPY main.py .
+COPY src/ ./src/
 COPY . .
 
 # Set Env

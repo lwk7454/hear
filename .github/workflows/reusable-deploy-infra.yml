@@ -1,0 +1,60 @@
+name: Reusable Infra Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: false
+        type: string
+        default: 'dev'
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: ./terraform/environments/${{ inputs.environment }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ca-central-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+
+      - name: Fetch DB Password
+        run: |
+          DB_PASSWORD=$(aws ssm get-parameter --name "/hear/${{ inputs.environment }}/DB_PASSWORD" --with-decryption --query "Parameter.Value" --output text --region ca-central-1)
+          echo "::add-mask::$DB_PASSWORD"
+          echo "DB_PASSWORD=$DB_PASSWORD" >> $GITHUB_ENV
+
+      - name: Terraform Init
+        env:
+          PROJECT_ID: "lobeixwzqhyofdjlvlbk"
+        run: |
+          terraform init \
+            -backend-config="conn_str=postgres://postgres.${PROJECT_ID}:${{ env.DB_PASSWORD }}@aws-1-ca-central-1.pooler.supabase.com:5432/postgres" \
+            -backend-config="schema_name=terraform_${{ inputs.environment }}"
+
+      - name: Terraform Apply
+        env:
+          PROJECT_ID: "lobeixwzqhyofdjlvlbk"
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=${PROJECT_ID}" \
+            -var="environment=${{ inputs.environment }}"

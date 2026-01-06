@@ -1,4 +1,4 @@
-import { LLMService } from "./llm";
+import { LLMService } from "./llm.js";
 import { z } from "zod";
 
 // Structured output schema (simulated via prompting for now, or Structured Output if model supports)

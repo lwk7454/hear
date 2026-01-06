@@ -1,0 +1,51 @@
+name: Reusable Web Deploy
+
+on:
+  workflow_call:
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Tools
+        uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install Deps
+        run: pnpm install
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ca-central-1
+
+      - name: Fetch SSM Config
+        run: |
+          aws ssm get-parameters-by-path \
+            --path "/hear/dev/" \
+            --recursive \
+            --region ca-central-1 \
+            --query "Parameters[*].{Name:Name,Value:Value}" \
+            --output json \
+            | jq -r '.[] | "\(.Name | sub("/hear/dev/"; ""))=\(.Value)"' >> $GITHUB_ENV
+
+      - name: Build Web
+        run: pnpm --filter web build
+
+      - name: Deploy S3 & CloudFront
+        run: |
+          aws s3 sync apps/web/out s3://${{ env.WEB_S3_BUCKET }} --delete
+          aws cloudfront create-invalidation --distribution-id ${{ env.WEB_CLOUDFRONT_ID }} --paths "/*"

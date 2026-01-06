@@ -14,7 +14,7 @@
 *   **[Task List](docs/task.md)**: Roadmap progress.
 *   **[Integration Guide](docs/integration_guide.md)**: Setup guides (e.g., GLM-4-Voice).
 *   **[Production Strategy](docs/production_strategy.md)**: Deployment & Safety.
-*   **[Hosting & Deployment](docs/hosting.md)**: Details on the current RunPod + Supabase setup.
+*   **[Hosting & Deployment](docs/deployment.md)**: Manual for AWS Lightsail, S3, and RunPod.
 
 
 ---
@@ -115,23 +115,27 @@ graph TD
 
 ## 5. Deployment & Hosting (Dev)
 
-We use a "Nearly Free" hybrid stack for development, leveraging **RunPod** for compute and **Supabase** for storage/hosting.
+We use a cost-optimized hybrid stack:
 
 ### Backend (Server)
-- **Host**: RunPod Pod (CPU-only) in North Carolina (`US-NC-2`).
-- **Cost Management**: **Smart Auto-Stop**. The server autonomously terminates its own pod after 15 minutes of inactivity (no REST/WS requests).
-- **Proximity**: Located in the US-East region for abundant CPU pod availability.
+- **Host**: **AWS Lightsail Container Service** (Micro) in `ca-central-1`.
+- **Why**: Stable URL, native WebSockets, fixed low cost (~$7/mo).
+- **Proximity**: Colocated with Supabase DB (Canada).
 
 ### Frontend (Web & App)
-- **Host**: Supabase Storage (Public Bucket).
-- **Routing**: A Supabase Edge Function (`static-proxy`) handles Next.js static routing and serves `.html` files for clean URLs.
-- **Cost**: $0 (Standard Supabase tier).
+- **Host**: **AWS S3 + CloudFront**.
+- **Distribution**: Global Edge Caching via CloudFront.
+- **Cost**: Pay-per-request (Extremely low).
+
+### Compute (Workers)
+- **Host**: **RunPod Serverless** (GPU).
+- **Why**: Scale-to-zero GPU inference for Audio/LLM tasks.
 
 ## 6. CI/CD Workflows
 
-- **`Deploy Server`**: Triggered on `apps/server/**` changes. Builds Docker image and pushes to GHCR. Includes a manual "Wake Up" trigger.
-- **`Deploy Web & App`**: Triggered on `apps/web/**` or `apps/app/**` changes. Performs a `next build` static export and uploads to the Supabase `web` bucket.
-- **`Deploy Cleanser Worker`**: Builds and deploys the audio cleansing worker to RunPod Serverless.
+- **`Deploy Server`**: Pushes directly to AWS Lightsail (Zero Downtime).
+- **`Deploy Web & App`**: Builds static site, syncs to S3, invalidates CloudFront.
+- **`Deploy Workers`**: Pushes Docker images to GHCR for RunPod.
 
 ## 7. Strategic Advantage
 Our competitors focus on "Chatting." We focus on **"Cloning."** By making the training process automatic (ingesting existing content), we solve the #1 problem for creators: **Laziness/Time**. They don't want to write a prompt; they want to be uploaded.

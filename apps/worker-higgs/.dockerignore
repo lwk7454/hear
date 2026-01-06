@@ -1,0 +1,12 @@
+.git
+.github
+__pycache__
+*.pyc
+.DS_Store
+.env
+.idea
+.vscode
+higgs_cache
+temp
+outputs
+requirements_base.txt

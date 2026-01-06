@@ -12,4 +12,6 @@ trigger: always_on
 
 1. When introducing environment variables, if you can't edit .env files, remember to update the respective example.env files (which are included in git).
 
-1. When database schema is changed, make sure both client and server sides have the same schema, and changes are applied to Supabase DB. 
+1. When database schema is changed, make sure both client and server sides have the same schema, and changes are applied to Supabase DB.
+
+1. Do not git push code unless told to do so.
