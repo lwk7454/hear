@@ -21,5 +21,4 @@ runpod==1.6.2
 # Note: Heavy dependencies (torch, transformers, scipy, numpy, etc.) 
 # are moved to requirements-volume.txt and loaded via /runpod-volume/venvs/gold-env
 
-# Higgs Audio (Local Vendor Copy)
--e lib/higgs-audio
+
