@@ -1,28 +1,35 @@
-FROM python:3.10-slim
+# Slim base image matching higgs-story
+FROM python:3.11-slim
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (matching higgs-story)
+# ffmpeg and libsndfile1 are required for audio processing
+# git is required for provisioner if run from this image
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    libsndfile1 \
     ffmpeg \
+    libsndfile1 \
     git \
+    nano \
     && rm -rf /var/lib/apt/lists/*
 
-# Install stable dependencies (PyTorch) first with cache mount
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip && \
-    pip install torch==2.2.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+# Add current directory to PYTHONPATH
+ENV PYTHONPATH="/app"
 
-# Copy requirements and install remaining dependencies
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements.txt
+# Copy requirements files
+COPY requirements.txt ./
 
-# Copy source code last
-COPY main.py .
+# Install minimal dependencies in the image
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
 COPY . .
+
+# Make scripts executable
+RUN chmod +x /app/scripts/*.sh
 
 # Set Env
 ENV PORT=8001
@@ -30,5 +37,5 @@ ENV PORT=8001
 # Expose Port
 EXPOSE 8001
 
-# Run
-CMD ["python", "-u", "main.py"]
+# Run via start_runner.sh (assumes volume is provisioned)
+CMD [ "/app/scripts/start_runner.sh" ]

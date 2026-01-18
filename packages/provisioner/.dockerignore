@@ -1,0 +1,19 @@
+# Ignore Python cache and temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Ignore git and development files
+.git/
+.gitignore
+.DS_Store
+
+# Ignore documentation that's not needed in the image
+README.md
+build-local.sh
+
+# Ignore any local test files
+test_*.py
+*.log

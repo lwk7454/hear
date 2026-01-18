@@ -206,7 +206,6 @@ module "aws_server" {
     FRONTEND_URL         = "https://${local.web_domain}"
 
     # Auth
-    # Auth
     GOOGLE_LOGIN_REDIRECT_URI = "https://${local.api_domain}/auth/login/google/callback"
     YOUTUBE_CLIENT_ID         = data.aws_ssm_parameter.youtube_client_id.value
     YOUTUBE_CLIENT_SECRET     = data.aws_ssm_parameter.youtube_client_secret.value

@@ -1,8 +1,27 @@
 import os
+import sys
+import site
+import glob
 import shutil
 import subprocess
 import requests
-import json
+
+# --- BOOTSTRAP: Load dependencies from Network Volume (higgs-story pattern) ---
+VOLUME_PATH = "/runpod-volume"
+VENV_ROOT = os.path.join(VOLUME_PATH, "venvs")
+
+if os.path.exists(VENV_ROOT):
+    site_packages_pattern = os.path.join(VENV_ROOT, "lib/python3.*/site-packages")
+    site_packages = glob.glob(site_packages_pattern)
+    for sp in site_packages:
+        print(f"--> [Bootstrap] Adding site-packages: {sp}")
+        site.addsitedir(sp)
+
+# Redirect AI model caches to volume
+os.environ["HF_HOME"] = os.path.join(VOLUME_PATH, "models", "huggingface")
+os.environ["TORCH_HOME"] = os.path.join(VOLUME_PATH, "models", "torch")
+os.environ["PYANNOTE_CACHE"] = os.path.join(VOLUME_PATH, "models", "pyannote")
+
 import json
 import numpy as np
 import torch

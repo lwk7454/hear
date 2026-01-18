@@ -3,10 +3,18 @@ import torch
 import traceback
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from .config import MODEL_PATH, TOKENIZER_PATH, DEVICE, USE_8BIT, USE_4BIT, KV_CACHE_SIZE
+from .config import MODEL_PATH, TOKENIZER_PATH, get_device, USE_8BIT, USE_4BIT, KV_CACHE_SIZE
 from .database import supabase
-from . import engine
 from .routes import router
+
+# Import HiggsGenerator from new smart_generation module
+from .smart_generation import HiggsGenerator, merge_audio_files
+from .reference_manager import DynamicReferenceManager
+
+# Global Instances
+generator = None
+reference_manager = None
+startup_error = None
 
 def ensure_models_locally():
     """
@@ -29,6 +37,9 @@ def ensure_models_locally():
         if local_path_str.startswith("/"):
             local_path = Path(local_path_str)
             
+            # Ensure parent exists (e.g., /runpod-volume/models/)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            
             # If directory is missing or empty (less than 2 files)
             if not local_path.exists() or len(list(local_path.iterdir())) < 2:
                 print(f"--> [Volume Setup] {local_path_str} is empty or missing.")
@@ -46,77 +57,60 @@ def ensure_models_locally():
 
 def initialize_engine():
     """
+    Initialize the HiggsGenerator and ReferenceManager.
     Exposed for Aliyun FC /initialize lifecycle hook.
     """
-    if engine.serve_engine is not None:
-        return engine.serve_engine
+    global generator, reference_manager, startup_error
+    
+    if generator is not None:
+        return generator
 
     # Mock Mode
     if os.getenv("MOCK_MODEL", "false").lower() == "true":
         print("--> MOCK_MODEL=true. Skipping load.")
-        class MockEngine:
-            def generate_with_cache(self, *args, **kwargs):
-                import numpy as np
-                return np.zeros(24000), 24000
-            
-            # Helper to simulate tokenization
-            class audio_tokenizer:
-                sampling_rate = 24000
-                @staticmethod
-                def encode(wav, sr):
-                    return torch.zeros((1, 100)) # Dummy cache
-            
-        engine.serve_engine = MockEngine()
-        engine.serve_engine.audio_tokenizer = MockEngine.audio_tokenizer() # for /clone usage
-        return engine.serve_engine
-
-    if not engine.HIGGS_AVAILABLE:
-        print("--> Higgs not available. Skipping engine initialization.")
-        return None
-
-    print(f"--> Starting Cached Higgs Engine on {DEVICE}...")
-    try:
-        load_kwargs = {}
-        skip_cuda_graphs = False
+        class MockGenerator:
+            def generate_streamed(self, *args, **kwargs):
+                return []
         
-        if (USE_8BIT or USE_4BIT) and DEVICE == "cuda":
-            from transformers import BitsAndBytesConfig
-            if USE_4BIT:
-                print("--> Loading in 4-bit...")
-                load_kwargs["quantization_config"] = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_use_double_quant=True
-                )
-            else:
-                print("--> Loading in 8-bit...")
-                load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
-            
-            load_kwargs["device_map"] = "auto"
-            skip_cuda_graphs = True  # Quantization incompatible with CUDA graphs
+        generator = MockGenerator()
+        return generator
 
-        engine.serve_engine = engine.CachedHiggsEngine(
-            model_name_or_path=MODEL_PATH, 
-            audio_tokenizer_name_or_path=TOKENIZER_PATH, 
-            device=DEVICE,
-            torch_dtype=torch.float16,
-            skip_cuda_graphs=skip_cuda_graphs,
-            kv_cache_lengths=[KV_CACHE_SIZE],  # Use single smaller cache to reduce VRAM usage
-            **load_kwargs
+    print(f"--> Starting Higgs Generator on {get_device()}...")
+    try:
+        # Build KV cache lengths list
+        kv_cache_lengths = [2048, 4096, 8192, 16384]
+        if KV_CACHE_SIZE not in kv_cache_lengths:
+            kv_cache_lengths.append(KV_CACHE_SIZE)
+            kv_cache_lengths = sorted(kv_cache_lengths)
+        
+        generator = HiggsGenerator(
+            model_path=MODEL_PATH,
+            audio_tokenizer_path=TOKENIZER_PATH,
+            device=get_device(),
+            kv_cache_lengths=kv_cache_lengths
         )
+        
+        # Initialize Reference Manager with 2GB cache
+        reference_manager = DynamicReferenceManager(
+            cache_dir="/tmp/ref_cache",
+            supabase_client=supabase,
+            bucket_name="ref_audio",
+            max_cache_size_mb=2048  # 2GB default
+        )
+        
         print("--> Model Loaded Successfully.")
     except Exception as e:
-        engine.startup_error = f"{e}\n{traceback.format_exc()}"
+        startup_error = f"{e}\n{traceback.format_exc()}"
         print(f"CRITICAL ERROR: {e}")
         print(traceback.format_exc())
     
-    return engine.serve_engine
+    return generator
 
 def ensure_infrastructure():
     """
     Ensures that Supabase buckets and local model storage are ready.
     """
+    global startup_error
     try:
         buckets = supabase.storage.list_buckets()
         bucket_names = [b.name for b in buckets]
@@ -124,12 +118,24 @@ def ensure_infrastructure():
             print("--> Creating 'audio' bucket...")
             supabase.storage.create_bucket("audio", options={"public": True})
     except Exception as e:
-        engine.startup_error = f"{e}\n{traceback.format_exc()}"
+        startup_error = f"{e}\n{traceback.format_exc()}"
         print(f"--> Bucket Check Failed: {e}")
         print(traceback.format_exc())
 
     # 1. Ensure Persistent Storage is provisioned
     ensure_models_locally()
+
+def get_generator():
+    """Get the global generator instance."""
+    return generator
+
+def get_reference_manager():
+    """Get the global reference manager instance."""
+    return reference_manager
+
+def get_startup_error():
+    """Get any startup error message."""
+    return startup_error
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

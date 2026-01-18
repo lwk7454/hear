@@ -2,16 +2,9 @@ fastapi==0.109.2
 uvicorn==0.27.1
 python-multipart==0.0.7
 requests==2.31.0
-supabase
+supabase==2.3.4
 python-dotenv==1.0.1
-demucs
-torch==2.2.0
-torchaudio==2.2.0
-torchcodec
-numpy<2.0
-huggingface_hub<0.20
-pyannote.audio
-websockets
-scipy
-runpod
-scipy
+runpod==1.6.2
+huggingface-hub==0.26.2
+pydantic==2.6.1
+# Note: torch, demucs, pyannote.audio, etc. are moved to gold-env
