@@ -59,11 +59,18 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
       }
     }
 
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.index_rewrite.arn
+    }
+
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
     default_ttl            = 3600
     max_ttl                = 86400
   }
+
+
 
   # SPA Routing: Redirect 403/404 to index.html (client-side routing)
   custom_error_response {
@@ -92,6 +99,31 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     ssl_support_method             = var.acm_certificate_arn != "" ? "sni-only" : null
     minimum_protocol_version       = var.acm_certificate_arn != "" ? "TLSv1.2_2021" : null
   }
+}
+
+# 6. CloudFront Function for Directory Indexes
+resource "aws_cloudfront_function" "index_rewrite" {
+  name    = "${var.project_id}-${var.environment}-index-rewrite"
+  runtime = "cloudfront-js-1.0"
+  comment = "Rewrite rules for S3 OAC Single Page App"
+  publish = true
+  code    = <<EOF
+function handler(event) {
+    var request = event.request;
+    var uri = request.uri;
+
+    // Check if the URI is missing a file name.
+    if (uri.endsWith('/')) {
+        request.uri += 'index.html';
+    } 
+    // Check if the URI is missing a file extension.
+    else if (!uri.includes('.')) {
+        request.uri += '/index.html';
+    }
+
+    return request;
+}
+EOF
 }
 
 # 5. Bucket Policy to allow CloudFront Access
