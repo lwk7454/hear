@@ -1,6 +1,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { google } from 'googleapis';
+import { env } from '../env.js';
 import { prisma } from '../lib/db.js';
 import { z } from 'zod';
 import { isAdminUser, verifyUser } from '../lib/auth.js';
@@ -16,15 +17,16 @@ const OAuthCallbackSchema = z.object({
 });
 
 // Helper for Google Login
-if (!process.env.FRONTEND_URL) throw new Error("Missing FRONTEND_URL");
-if (!process.env.GOOGLE_LOGIN_REDIRECT_URI) throw new Error("Missing GOOGLE_LOGIN_REDIRECT_URI");
-if (!process.env.YOUTUBE_CLIENT_ID) throw new Error("Missing YOUTUBE_CLIENT_ID (used for Google Login)");
-if (!process.env.YOUTUBE_CLIENT_SECRET) throw new Error("Missing YOUTUBE_CLIENT_SECRET (used for Google Login)");
+// Validated by env.ts
+// if (!process.env.FRONTEND_URL) throw new Error("Missing FRONTEND_URL");
+// if (!process.env.GOOGLE_LOGIN_REDIRECT_URI) throw new Error("Missing GOOGLE_LOGIN_REDIRECT_URI");
+// if (!process.env.YOUTUBE_CLIENT_ID) throw new Error("Missing YOUTUBE_CLIENT_ID (used for Google Login)");
+// if (!process.env.YOUTUBE_CLIENT_SECRET) throw new Error("Missing YOUTUBE_CLIENT_SECRET (used for Google Login)");
 
 const googleLoginClient = new google.auth.OAuth2(
-    process.env.YOUTUBE_CLIENT_ID,
-    process.env.YOUTUBE_CLIENT_SECRET,
-    process.env.GOOGLE_LOGIN_REDIRECT_URI
+    env.YOUTUBE_CLIENT_ID,
+    env.YOUTUBE_CLIENT_SECRET,
+    env.GOOGLE_LOGIN_REDIRECT_URI
 );
 
 export async function authRoutes(fastify: FastifyInstance) {
@@ -56,7 +58,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         const url = googleLoginClient.generateAuthUrl({
             access_type: 'offline',
             scope: ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email'],
-            redirect_uri: process.env.GOOGLE_LOGIN_REDIRECT_URI!
+            redirect_uri: env.GOOGLE_LOGIN_REDIRECT_URI!
         });
         console.log('Generated Login URL:', url); // Debug
         return { url };
@@ -93,7 +95,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 sameSite: 'lax'
             });
 
-            return reply.redirect(`${process.env.FRONTEND_URL}/creator`);
+            return reply.redirect(`${env.FRONTEND_URL}/creator`);
         } catch (e) {
             console.error(e);
             return reply.code(500).send({ error: 'Login failed' });
@@ -102,12 +104,12 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     // --- YouTube / Google OAuth (SCAN Scope) ---
 
-    if (!process.env.YOUTUBE_REDIRECT_URI) throw new Error("Missing YOUTUBE_REDIRECT_URI");
+    if (!env.YOUTUBE_REDIRECT_URI) throw new Error("Missing YOUTUBE_REDIRECT_URI");
 
     const scanClient = new google.auth.OAuth2(
-        process.env.YOUTUBE_CLIENT_ID,
-        process.env.YOUTUBE_CLIENT_SECRET,
-        process.env.YOUTUBE_REDIRECT_URI
+        env.YOUTUBE_CLIENT_ID,
+        env.YOUTUBE_CLIENT_SECRET,
+        env.YOUTUBE_REDIRECT_URI
     );
 
     fastify.get('/auth/youtube/url', async (request, reply) => {
@@ -155,7 +157,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            return reply.redirect(`${process.env.FRONTEND_URL}/creator?connected=youtube`);
+            return reply.redirect(`${env.FRONTEND_URL}/creator?connected=youtube`);
 
         } catch (e) {
             console.error(e);
@@ -165,11 +167,11 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     // --- Instagram OAuth (SCAN Scope) ---
 
-    const IG_CLIENT_ID = process.env.IG_CLIENT_ID;
-    const IG_CLIENT_SECRET = process.env.IG_CLIENT_SECRET;
-    if (!process.env.IG_REDIRECT_URI) throw new Error("Missing IG_REDIRECT_URI");
+    const IG_CLIENT_ID = env.IG_CLIENT_ID;
+    const IG_CLIENT_SECRET = env.IG_CLIENT_SECRET;
+    if (!env.IG_REDIRECT_URI) throw new Error("Missing IG_REDIRECT_URI");
 
-    const IG_REDIRECT_URI = process.env.IG_REDIRECT_URI;
+    const IG_REDIRECT_URI = env.IG_REDIRECT_URI;
 
     fastify.get('/auth/instagram/url', async (request, reply) => {
         let user;
@@ -216,7 +218,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            return reply.redirect(`${process.env.FRONTEND_URL}/creator?connected=instagram`);
+            return reply.redirect(`${env.FRONTEND_URL}/creator?connected=instagram`);
 
         } catch (e) {
             console.error(e);

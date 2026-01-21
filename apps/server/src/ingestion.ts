@@ -1,8 +1,9 @@
 import { FastifyInstance } from 'fastify'
+import { env } from './env.js';
 import { google } from 'googleapis'
 import { z } from 'zod'
 import { TranscriptProcessor } from './services/processor.js'
-import { AudioCleaner } from './services/cleaner.js'
+import { AudioCleanserService } from './services/cleanser.js'
 import { HiggsService } from './services/higgs.js'
 import { AudioService } from './services/audio.js'
 import { InstagramService } from './services/instagram.js'
@@ -287,9 +288,9 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
          const ts = Date.now();
          const rawUrl = await storageService.upload(rawPath, `ingest/${creatorId}/${ts}_raw.mp3`);
          
-         const cleaner = new AudioCleaner();
+         const cleanser = new AudioCleanserService();
          // Offload to GPU Worker
-         const { vocalsUrl, segments } = await cleaner.process(rawUrl, creatorId, creator.voiceSample);
+         const { vocalsUrl, segments } = await cleanser.process(rawUrl, creatorId, creator.voiceSample);
          
          // For MVP Split Arch: Use full vocals as sample
          const sampleUrl = vocalsUrl; 
@@ -712,7 +713,7 @@ export async function ingestionRoutes(fastify: FastifyInstance) {
         
         // --- Security: Derive Identity from Connections ---
         let creator;
-        if (process.env.ALLOW_TEST_AUTH === 'true' && user.email.includes('demo.com')) {
+        if (env.ALLOW_TEST_AUTH === 'true' && user.email.includes('demo.com')) {
             // Mock creator for testing if it doesn't exist
             creator = await prisma.creator.findUnique({
                 where: { id: user.id },

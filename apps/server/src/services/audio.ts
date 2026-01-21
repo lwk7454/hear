@@ -1,5 +1,6 @@
 import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
+import { env } from '../env.js';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -20,16 +21,16 @@ export class AudioService {
 
   private getAuthArgs(): string {
     // Priority 1: Direct browser injection (best for local dev)
-    if (process.env.YOUTUBE_COOKIES_FROM_BROWSER) {
-      return `--cookies-from-browser ${process.env.YOUTUBE_COOKIES_FROM_BROWSER}`;
+    if (env.YOUTUBE_COOKIES_FROM_BROWSER) {
+      return `--cookies-from-browser ${env.YOUTUBE_COOKIES_FROM_BROWSER}`;
     }
 
     const serverRoot = path.resolve(__dirname, '../../');
     const paths = [
-      process.env.YOUTUBE_COOKIES_PATH
-        ? (path.isAbsolute(process.env.YOUTUBE_COOKIES_PATH)
-          ? process.env.YOUTUBE_COOKIES_PATH
-          : path.join(serverRoot, process.env.YOUTUBE_COOKIES_PATH))
+      env.YOUTUBE_COOKIES_PATH
+        ? (path.isAbsolute(env.YOUTUBE_COOKIES_PATH)
+          ? env.YOUTUBE_COOKIES_PATH
+          : path.join(serverRoot, env.YOUTUBE_COOKIES_PATH))
         : null,
       path.join(serverRoot, 'cookies.txt'),
       path.join(process.cwd(), 'cookies.txt')

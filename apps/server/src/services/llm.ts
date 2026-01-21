@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { env } from '../env.js';
 
 export class LLMService {
   private model: ChatOpenAI;
@@ -7,11 +8,11 @@ export class LLMService {
     // defaults to OpenAI but allows overriding for DeepSeek/Qwen
     // usage: OPENAI_BASE_URL=https://api.deepseek.com/v1 OPENAI_API_KEY=sk-ds...
     this.model = new ChatOpenAI({
-      modelName: process.env.LLM_MODEL || "gpt-4o",
+      modelName: env.LLM_MODEL,
       temperature: 0.7,
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: env.OPENAI_API_KEY,
       configuration: {
-        baseURL: process.env.OPENAI_BASE_URL, 
+        baseURL: env.OPENAI_BASE_URL, 
       }
     });
   }

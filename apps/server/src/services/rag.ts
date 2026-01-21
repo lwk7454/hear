@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { env as appEnv } from '../env.js';
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { prisma } from "../lib/db.js";
 import { pipeline, env } from '@xenova/transformers';
@@ -49,11 +50,11 @@ export class RAGService {
     this.embeddings = new LocalEmbeddings();
 
     this.significanceModel = new ChatOpenAI({
-      modelName: process.env.LLM_MODEL || "gpt-4o",
+      modelName: appEnv.LLM_MODEL,
       temperature: 0,
       configuration: {
-        baseURL: process.env.OPENAI_BASE_URL,
-        apiKey: process.env.OPENAI_API_KEY,
+        baseURL: appEnv.OPENAI_BASE_URL,
+        apiKey: appEnv.OPENAI_API_KEY,
       }
     });
 

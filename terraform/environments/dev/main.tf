@@ -35,6 +35,10 @@ data "aws_ssm_parameter" "supabase_access_token" {
   with_decryption = true
 }
 
+data "aws_ssm_parameter" "vision_model" {
+  name = "/hear/${var.environment}/VISION_MODEL"
+}
+
 data "aws_ssm_parameter" "runpod_api_key" {
   name            = "/hear/${var.environment}/RUNPOD_API_KEY"
   with_decryption = true
@@ -61,6 +65,41 @@ data "aws_ssm_parameter" "ig_client_id" {
 data "aws_ssm_parameter" "ig_client_secret" {
   name            = "/hear/${var.environment}/IG_CLIENT_SECRET"
   with_decryption = true
+}
+
+data "aws_ssm_parameter" "jwt_secret" {
+  name            = "/hear/${var.environment}/JWT_SECRET"
+  with_decryption = true
+}
+
+data "aws_ssm_parameter" "cookie_secret" {
+  name            = "/hear/${var.environment}/COOKIE_SECRET"
+  with_decryption = true
+}
+
+data "aws_ssm_parameter" "admin_emails" {
+  name = "/hear/${var.environment}/ADMIN_EMAILS"
+}
+
+data "aws_ssm_parameter" "openai_api_key" {
+  name            = "/hear/${var.environment}/OPENAI_API_KEY"
+  with_decryption = true
+}
+
+data "aws_ssm_parameter" "openai_base_url" {
+  name = "/hear/${var.environment}/OPENAI_BASE_URL"
+}
+
+data "aws_ssm_parameter" "llm_model" {
+  name = "/hear/${var.environment}/LLM_MODEL"
+}
+
+data "aws_ssm_parameter" "higgs_api_url" {
+  name = "/hear/${var.environment}/HIGGS_API_URL"
+}
+
+data "aws_ssm_parameter" "cleanser_worker_url" {
+  name = "/hear/${var.environment}/CLEANSER_WORKER_URL"
 }
 
 # --- Providers ---
@@ -200,10 +239,30 @@ module "aws_server" {
 
   env_vars = {
     DATABASE_URL         = "postgres://postgres.${var.project_id}:${data.aws_ssm_parameter.db_password.value}@aws-1-ca-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+    DB_PASSWORD          = data.aws_ssm_parameter.db_password.value
     SUPABASE_URL         = data.aws_ssm_parameter.supabase_url.value
     SUPABASE_SERVICE_KEY = data.aws_ssm_parameter.supabase_service_key.value
     CORS_ORIGINS         = "https://${local.web_domain}"
     FRONTEND_URL         = "https://${local.web_domain}"
+    NODE_ENV             = "production"
+    PORT                 = "8000"
+    ENVIRONMENT          = var.environment
+
+    # Secrets
+    JWT_SECRET    = data.aws_ssm_parameter.jwt_secret.value
+    COOKIE_SECRET = data.aws_ssm_parameter.cookie_secret.value
+    ADMIN_EMAILS  = data.aws_ssm_parameter.admin_emails.value
+
+    # AI Services
+    OPENAI_API_KEY      = data.aws_ssm_parameter.openai_api_key.value
+    OPENAI_BASE_URL     = data.aws_ssm_parameter.openai_base_url.value
+    LLM_MODEL           = data.aws_ssm_parameter.llm_model.value
+    VISION_MODEL        = data.aws_ssm_parameter.vision_model.value
+    HIGGS_API_URL       = data.aws_ssm_parameter.higgs_api_url.value
+    CLEANSER_WORKER_URL = data.aws_ssm_parameter.cleanser_worker_url.value
+    HIGGS_TIMEOUT       = "60000"
+    GLM_WORKER_HOST     = "localhost" # Adjust if hosted remotely
+    PERPLEXITY_MODEL    = "sonar"
 
     # Auth
     GOOGLE_LOGIN_REDIRECT_URI = "https://${local.api_domain}/auth/login/google/callback"
@@ -213,7 +272,7 @@ module "aws_server" {
     IG_CLIENT_ID              = data.aws_ssm_parameter.ig_client_id.value
     IG_CLIENT_SECRET          = data.aws_ssm_parameter.ig_client_secret.value
     IG_REDIRECT_URI           = "https://${local.api_domain}/auth/instagram/callback"
-    IDLE_TIMEOUT              = "300000"
+    ALLOW_TEST_AUTH           = "true" # For dev environment
 
     # RunPod (if needed by server)
     RUNPOD_API_KEY = data.aws_ssm_parameter.runpod_api_key.value

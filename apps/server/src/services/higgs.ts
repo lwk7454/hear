@@ -1,5 +1,6 @@
 import fs from 'fs';
 import axios from 'axios';
+import { env } from '../env.js';
 import FormData from 'form-data';
 
 export class HiggsService {
@@ -7,12 +8,12 @@ export class HiggsService {
 
   constructor() {
     // Default to local python worker if not set
-    this.baseUrl = process.env.HIGGS_API_URL || 'http://localhost:8002';
+    this.baseUrl = env.HIGGS_API_URL;
     console.log(`[HiggsService] Initialized with baseUrl: ${this.baseUrl}, timeout: ${this.timeout}ms`);
   }
 
   private get timeout(): number {
-    return parseInt(process.env.HIGGS_TIMEOUT || '60000');
+    return env.HIGGS_TIMEOUT;
   }
 
   /**

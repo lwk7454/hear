@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events'
+import { env } from './env.js';
 import WebSocket from 'ws'
 
 export class GLMVoiceClient extends EventEmitter {
@@ -22,7 +23,7 @@ export class GLMVoiceClient extends EventEmitter {
     }
 
     // Real WebSocket connection to GLM worker on RunPod
-    this.ws = new WebSocket(`ws://${process.env.GLM_WORKER_HOST || 'localhost'}:8003/ws/stream`)
+    this.ws = new WebSocket(`ws://${env.GLM_WORKER_HOST}:8003/ws/stream`)
     
     this.ws.on('open', () => {
       this.isConnected = true

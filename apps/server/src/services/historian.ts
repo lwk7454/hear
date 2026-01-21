@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { env } from '../env.js';
 import { prisma } from "../lib/db.js";
 import { z } from "zod";
 
@@ -11,10 +12,10 @@ export class FactHistorian {
 
   constructor() {
     this.model = new ChatOpenAI({
-      modelName: process.env.LLM_MODEL || "gpt-4o",
+      modelName: env.LLM_MODEL,
       temperature: 0,
       configuration: {
-        baseURL: process.env.OPENAI_BASE_URL,
+        baseURL: env.OPENAI_BASE_URL,
       }
     });
   }

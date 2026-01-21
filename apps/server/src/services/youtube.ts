@@ -1,13 +1,14 @@
 import { google, youtube_v3 } from 'googleapis';
+import { env } from '../env.js';
 
 export class YouTubeService {
   private youtube: youtube_v3.Youtube;
 
   constructor(accessToken: string, refreshToken?: string) {
     const oauth2Client = new google.auth.OAuth2(
-      process.env.YOUTUBE_CLIENT_ID,
-      process.env.YOUTUBE_CLIENT_SECRET,
-      process.env.YOUTUBE_REDIRECT_URI
+      env.YOUTUBE_CLIENT_ID || "",
+      env.YOUTUBE_CLIENT_SECRET || "",
+      env.YOUTUBE_REDIRECT_URI || ""
     );
     
     oauth2Client.setCredentials({ 

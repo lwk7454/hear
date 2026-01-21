@@ -1,16 +1,17 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { env } from '../env.js';
 
 export class BioService {
   private model: ChatOpenAI;
 
   constructor() {
-    const isPerplexityCustom = !!process.env.PERPLEXITY_API_KEY;
-    const baseURL = isPerplexityCustom ? "https://api.perplexity.ai" : (process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1");
-    const apiKey = isPerplexityCustom ? process.env.PERPLEXITY_API_KEY : process.env.OPENAI_API_KEY;
+    // OpenRouter Only (for Perplexity)
+    const baseURL = env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1";
+    const apiKey = env.OPENAI_API_KEY;
     
-    // If using OpenRouter, we need the "perplexity/" prefix for the model
-    let modelName = process.env.PERPLEXITY_MODEL || "sonar";
-    if (!isPerplexityCustom && !modelName.startsWith("perplexity/")) {
+    // Ensure "perplexity/" prefix for OpenRouter if using default sonar models
+    let modelName = env.PERPLEXITY_MODEL;
+    if (!modelName.startsWith("perplexity/")) {
       modelName = `perplexity/${modelName}`;
     }
 

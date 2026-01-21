@@ -16,7 +16,6 @@ The backend service for the Hear platform, handling API requests, data ingestion
     ```
 3.  **Environment**:
     Copy `.env.example` to `.env` and fill in:
-    *   `DATABASE_URL`
     *   `OPENAI_API_KEY` (for Brain/LLM)
     *   `YOUTUBE_CLIENT_ID` / `SECRET` (for OAuth)
     *   `CORS_ORIGINS` (Optional, comma-separated list of allowed origins. Defaults to localhost for dev).

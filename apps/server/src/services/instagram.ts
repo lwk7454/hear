@@ -1,10 +1,11 @@
+import { env } from '../env.js';
 export class InstagramService {
   private clientId: string;
   private clientSecret: string;
   
   constructor() {
-    this.clientId = process.env.IG_CLIENT_ID || '';
-    this.clientSecret = process.env.IG_CLIENT_SECRET || '';
+    this.clientId = env.IG_CLIENT_ID || '';
+    this.clientSecret = env.IG_CLIENT_SECRET || '';
   }
 
   /**

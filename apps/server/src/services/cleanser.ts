@@ -1,20 +1,16 @@
 import { exec } from 'child_process';
+import { env } from '../env.js';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
 
 const execAsync = util.promisify(exec);
 
-export class AudioCleaner {
+export class AudioCleanserService {
   private workerUrl: string;
 
   constructor() {
-    // Default to a separate port if running locally (e.g. 8000 is server, 8001 is worker?)
-    // But my main.py set port 8000. Server is 8000.
-    // I should change Worker Port in main.py or here.
-    // Let's assume Worker acts on 8001 or separate IP.
-    // User said "Windows IP".
-    this.workerUrl = process.env.WORKER_URL || 'http://127.0.0.1:8001'; 
+    this.workerUrl = env.CLEANSER_WORKER_URL; 
   }
 
   /**
@@ -23,7 +19,7 @@ export class AudioCleaner {
    * Output: Public URL of vocals + Diarization segments.
    */
   async process(audioUrl: string, creatorId: string, voiceSampleUrl?: string): Promise<{ vocalsUrl: string, segments: any[] }> {
-    console.log(`[AudioCleaner] Calling GPU Worker at ${this.workerUrl} for ${audioUrl}...`);
+    console.log(`[AudioCleanser] Calling GPU Worker at ${this.workerUrl} for ${audioUrl}...`);
 
     try {
         const res = await fetch(`${this.workerUrl}/process`, {
@@ -49,7 +45,7 @@ export class AudioCleaner {
             segments: data.artifacts.segments
         };
     } catch (e) {
-        console.error("[AudioCleaner] Worker failed. Is the Python Worker running?", e);
+        console.error("[AudioCleanser] Worker failed. Is the Python Worker running?", e);
         throw e;
     }
   }

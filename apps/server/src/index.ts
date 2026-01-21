@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { env } from './env.js';
 import Fastify, { FastifyInstance } from 'fastify'
 import { authRoutes } from './routes/auth.js'
 import { storageService } from './services/storage.js'
@@ -32,8 +33,8 @@ server.get('/health', async () => {
 const start = async () => {
   try {
     // 1. Register Plugins
-    const allowedOrigins = process.env.CORS_ORIGINS
-      ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+    const allowedOrigins = env.CORS_ORIGINS
+      ? env.CORS_ORIGINS.split(',').map(o => o.trim())
       : [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
@@ -57,14 +58,14 @@ const start = async () => {
 
 
     server.register(jwt, {
-      secret: process.env.JWT_SECRET || 'supersecret123',
+      secret: env.JWT_SECRET,
       cookie: {
         cookieName: 'token',
         signed: false
       }
     })
     server.register(cookie, {
-      secret: process.env.COOKIE_SECRET || 'another-secret-123',
+      secret: env.COOKIE_SECRET,
       parseOptions: {}
     })
 

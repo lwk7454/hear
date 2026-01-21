@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import { env } from '../env.js';
 import { HumanMessage } from "@langchain/core/messages";
 
 export class VisionService {
@@ -6,11 +7,11 @@ export class VisionService {
 
   constructor() {
     this.model = new ChatOpenAI({
-      modelName: process.env.VISION_MODEL || "qwen/qwen2-vl-72b-instruct",
+      modelName: env.VISION_MODEL,
       temperature: 0.2, // Lower temperature for more factual descriptions
       configuration: {
-        baseURL: process.env.OPENAI_BASE_URL,
-        apiKey: process.env.OPENAI_API_KEY,
+        baseURL: env.OPENAI_BASE_URL,
+        apiKey: env.OPENAI_API_KEY,
       }
     });
   }
