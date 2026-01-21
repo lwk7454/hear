@@ -11,10 +11,9 @@ from .routes import router
 from .smart_generation import HiggsGenerator, merge_audio_files
 from .reference_manager import DynamicReferenceManager
 
-# Global Instances
-generator = None
-reference_manager = None
-startup_error = None
+# Global Dependencies
+from . import dependencies
+from .dependencies import generator, reference_manager, startup_error # For access, but we write to dependencies.*
 
 def ensure_models_locally():
     """
@@ -61,9 +60,10 @@ def initialize_engine():
     Exposed for Aliyun FC /initialize lifecycle hook.
     """
     global generator, reference_manager, startup_error
+    # Note: We are updating the module-level variables in dependencies
     
-    if generator is not None:
-        return generator
+    if dependencies.generator is not None:
+        return dependencies.generator
 
     # Mock Mode
     if os.getenv("MOCK_MODEL", "false").lower() == "true":
@@ -83,7 +83,7 @@ def initialize_engine():
             kv_cache_lengths.append(KV_CACHE_SIZE)
             kv_cache_lengths = sorted(kv_cache_lengths)
         
-        generator = HiggsGenerator(
+        dependencies.generator = HiggsGenerator(
             model_path=MODEL_PATH,
             audio_tokenizer_path=TOKENIZER_PATH,
             device=get_device(),
@@ -91,7 +91,7 @@ def initialize_engine():
         )
         
         # Initialize Reference Manager with 2GB cache
-        reference_manager = DynamicReferenceManager(
+        dependencies.reference_manager = DynamicReferenceManager(
             cache_dir="/tmp/ref_cache",
             supabase_client=supabase,
             bucket_name="ref_audio",
@@ -100,7 +100,7 @@ def initialize_engine():
         
         print("--> Model Loaded Successfully.")
     except Exception as e:
-        startup_error = f"{e}\n{traceback.format_exc()}"
+        dependencies.startup_error = f"{e}\n{traceback.format_exc()}"
         print(f"CRITICAL ERROR: {e}")
         print(traceback.format_exc())
     
@@ -127,15 +127,15 @@ def ensure_infrastructure():
 
 def get_generator():
     """Get the global generator instance."""
-    return generator
+    return dependencies.generator
 
 def get_reference_manager():
     """Get the global reference manager instance."""
-    return reference_manager
+    return dependencies.reference_manager
 
 def get_startup_error():
     """Get any startup error message."""
-    return startup_error
+    return dependencies.startup_error
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

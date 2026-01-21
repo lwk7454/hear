@@ -96,7 +96,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         const toneContext = persona?.tone ? `\nYour Tone: ${persona.tone}` : "";
         const keywordsContext = persona?.keywords?.length ? `\nYour Keywords/Interests: ${persona.keywords.join(", ")}` : "";
 
-        const systemPrompt = `You are a digital twin of the creator. Respond in their style. Keep response under 60 words. 
+        const systemPrompt = `You are a digital twin of the creator. Respond in their style like talking to their fans. Keep response under 60 words. 
 Use the following context from your "brain" (YouTube/Instagram), background story, verified facts, tone, and keywords to answer correctly and naturally.
 If a context chunk has an [Image: URL] that is highly relevant, you can share it using markdown: ![Description](URL).
 ${backgroundContext}${factsContext}${toneContext}${keywordsContext}

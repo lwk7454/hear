@@ -25,6 +25,13 @@ export class StorageService {
      * @returns Public URL of the uploaded file
      */
     async upload(file: string | Buffer | NodeJS.ReadableStream, destinationPath: string, mimeType?: string): Promise<string> {
+        return this.uploadToBucket(this.bucket, destinationPath, file, mimeType);
+    }
+
+    /**
+     * Generic upload to any bucket
+     */
+    async uploadToBucket(bucket: string, destinationPath: string, file: string | Buffer | NodeJS.ReadableStream, mimeType?: string): Promise<string> {
         try {
             let fileContent: string | Buffer | NodeJS.ReadableStream = file
             let contentType = mimeType || 'application/octet-stream'
@@ -34,27 +41,28 @@ export class StorageService {
                 if (!mimeType) {
                     if (file.endsWith('.wav')) contentType = 'audio/wav'
                     else if (file.endsWith('.mp3')) contentType = 'audio/mpeg'
+                    else if (file.endsWith('.json')) contentType = 'application/json'
                 }
             }
 
             const { data, error } = await this.supabase
                 .storage
-                .from(this.bucket)
+                .from(bucket)
                 .upload(destinationPath, fileContent, {
                     contentType,
                     upsert: true,
-                    duplex: 'half' // Required for Node streams
+                    duplex: 'half'
                 })
 
             if (error) {
-                console.error("[StorageService] Upload Failed:", error)
+                console.error(`[StorageService] Upload to ${bucket} Failed:`, error)
                 throw error
             }
 
             // Get Public URL
             const { data: publicData } = this.supabase
                 .storage
-                .from(this.bucket)
+                .from(bucket)
                 .getPublicUrl(destinationPath)
             
             console.log(`[StorageService] Uploaded to ${publicData.publicUrl}`)

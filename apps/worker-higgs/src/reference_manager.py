@@ -50,53 +50,61 @@ class DynamicReferenceManager:
 
     def _load_user_index(self, user_id: str) -> bool:
         """
-        Loads index.json for a specific user.
-        Tries memory -> disk cache -> supabase.
+        Loads reference index directly from Supabase DB `RefAudioClip`.
+        V1: Always fetch fresh from DB.
         """
-        if user_id in self.user_indexes:
-            return True
-            
-        local_index_path = os.path.join(self.cache_dir, user_id, "index.json")
-        index_data = None
-        
-        # 1. Try Disk
-        if os.path.exists(local_index_path):
-            try:
-                with open(local_index_path, 'r', encoding='utf-8') as f:
-                    index_data = json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to load cached index for {user_id}: {e}")
-        
-        # 2. Try Supabase if not on disk
-        if not index_data and self.supabase:
-            remote_path = f"{user_id}/index.json"
-            logger.info(f"Downloading index for {user_id} from {remote_path}...")
-            try:
-                os.makedirs(os.path.dirname(local_index_path), exist_ok=True)
-                with open(local_index_path, 'wb') as f:
-                    response = self.supabase.storage.from_(self.bucket_name).download(remote_path)
-                    f.write(response)
+        if not self.supabase:
+            logger.warning("Supabase client missing, cannot fetch references.")
+            return False
+
+        try:
+            # Fetch from DB: Select useful fields
+            # Order by confidence desc to prioritize better clips
+            res = self.supabase.table("RefAudioClip")\
+                .select("path,tags,transcript,emotion,confidence")\
+                .eq("creatorId", user_id)\
+                .order("confidence", desc=True)\
+                .execute()
                 
-                with open(local_index_path, 'r', encoding='utf-8') as f:
-                    index_data = json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to download index for {user_id}: {e}")
-                
-        if index_data:
-            # Build tag map with priority support
+            if not res.data:
+                logger.warning(f"No reference clips found in DB for {user_id}")
+                self.user_indexes[user_id] = {}
+                self.user_data[user_id] = []
+                # Return True even if empty so we don't retry incessantly? 
+                # Or False to indicate failure?
+                # Let's return True but with empty map, so generator knows there are no refs.
+                return True
+
+            index_data = []
             tag_map = {}
-            for entry in index_data:
-                priority = entry.get('priority', 5)  # Default priority 5
-                for tag in entry.get('tags', []):
-                    key = tag.strip("[] ")
-                    if key not in tag_map or tag_map[key].get('priority', 5) < priority:
-                        tag_map[key] = entry
+            
+            for clip in res.data:
+                # Map DB fields to internal structure
+                # clip['path'] is like "123/456.wav". Worker download expects relative path in bucket.
+                # If bucket structure matches, we use path as audio_filename.
+                entry = {
+                    "audio_filename": clip.get("path"), 
+                    "tags": clip.get("tags") or [],
+                    "transcript": clip.get("transcript") or "",
+                    "emotion": clip.get("emotion") or "neutral",
+                    "priority": int((clip.get("confidence") or 0.5) * 10) # Map 0.0-1.0 to 0-10
+                }
+                index_data.append(entry)
+                
+                # Build Tag Map
+                for tag in entry.get("tags", []):
+                    key = tag.strip("[] ").lower() # Normalize
+                    # Since we ordered by confidence desc, first one we see is highest priority/confidence
+                    if key not in tag_map:
+                         tag_map[key] = entry
             
             self.user_indexes[user_id] = tag_map
             self.user_data[user_id] = index_data
             return True
-            
-        return False
+
+        except Exception as e:
+            logger.error(f"DB Fetch Error for {user_id}: {e}")
+            return False
 
     def get_reference(
         self, 
@@ -132,7 +140,7 @@ class DynamicReferenceManager:
         detected_tag = None
         matches = re.findall(r'\[(.*?)\]', text_chunk)
         for match in matches:
-            clean_tag = match.strip()
+            clean_tag = match.strip().lower()
             if clean_tag in tag_map:
                 target_entry = tag_map[clean_tag]
                 detected_tag = clean_tag
@@ -170,10 +178,17 @@ class DynamicReferenceManager:
         if not audio_filename:
             return None, None
             
-        # Construct full path: user_id/ref_0.wav
-        full_audio_name = f"{user_id}/{audio_filename}"
-        transcript = target_entry.get('transcript', '')
+        if not audio_filename:
+            return None, None
+            
+        # audio_filename from DB is already full path (e.g. user_id/foo.wav)
+        # or relative? In RefAudioGenerator we stored `creatorId/fileName`.
+        # Worker expects download path.
+        full_audio_name = audio_filename
+        
+        # Local cache path: cache_dir/full_audio_name
         local_path = os.path.join(self.cache_dir, full_audio_name)
+        transcript = target_entry.get('transcript', '')
 
         # 5. Check Cache
         if os.path.exists(local_path):

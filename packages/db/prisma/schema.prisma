@@ -23,6 +23,23 @@ model Creator {
   contents        ContentItem[]
   persona         PersonaProfile?
   authConnections PlatformConnection[]
+  refClips        RefAudioClip[]
+}
+
+model RefAudioClip {
+  id          String   @id @default(uuid())
+  creatorId   String
+  url         String
+  path        String
+  transcript  String
+  emotion     String
+  tags        String[]
+  duration    Float
+  confidence  Float?
+  createdAt   DateTime @default(now())
+  creator     Creator  @relation(fields: [creatorId], references: [id])
+
+  @@index([creatorId])
 }
 
 model PlatformConnection {

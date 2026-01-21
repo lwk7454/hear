@@ -12,6 +12,7 @@ import { VisionService } from './services/vision.js'
 import { RAGService } from './services/rag.js'
 import { BioService } from './services/bio.js'
 import { FactHistorian } from './services/historian.js'
+import { RefAudioGenerator } from './services/ref-audio.js'
 
 // Schema for Step 1: Discovery
 const DiscoverySchema = z.object({
@@ -295,12 +296,22 @@ async function parseContentItem(creatorId: string, item: { url: string, type: st
          // For MVP Split Arch: Use full vocals as sample
          const sampleUrl = vocalsUrl; 
          
-         // Download vocals locally for Higgs
+         // Download vocals locally for cutting
          const vocalsPath = rawPath.replace('_full.mp3', '_vocals_dl.wav'); // or similar temp path
          await storageService.download(vocalsUrl, vocalsPath);
 
+         // NEW: Ref Audio Generation (DB + Index)
+         const refAudioGen = new RefAudioGenerator();
+         await refAudioGen.processSegments(vocalsPath, segments, creatorId, transcript);
+         
+         // Clean up local vocals
+         // fs.unlinkSync(vocalsPath); // Handled by processSegments internally if we moved logic? 
+         // Actually refAudioGen.processSegments takes path, cuts it, then we can delete. 
+         // RefAudioGenerator creates its own cut files.
+         
          const higgs = new HiggsService();
-         const voiceId = await higgs.generateEmbedding(vocalsPath, creatorId);
+         // const voiceId = await higgs.generateEmbedding(vocalsPath, creatorId); // Legacy
+         const voiceId = creator.id; // Higgs use creatorId to fetch index
          
          // C. Populate Brain (RAG Ingestion)
          const rag = new RAGService();

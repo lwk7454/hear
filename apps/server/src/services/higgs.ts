@@ -16,51 +16,7 @@ export class HiggsService {
     return env.HIGGS_TIMEOUT;
   }
 
-  /**
-   * generateEmbedding: Uploads a clean 30s audio sample to get a Voice ID/Vector.
-   */
-  async generateEmbedding(filePath: string, creatorId: string): Promise<string> {
-    console.log(`[Higgs] Generating embedding from ${filePath} for ${creatorId} via ${this.baseUrl}...`);
 
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    try {
-      const form = new FormData();
-      form.append('file', fs.createReadStream(filePath));
-      form.append('creator_id', creatorId);
-
-      const response = await axios.post(`${this.baseUrl}/clone`, form, {
-        headers: {
-          ...form.getHeaders()
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-        timeout: this.timeout // Configurable timeout for processing
-      });
-
-      if (response.data.status === 'success') {
-        console.log(`[Higgs] Embedding generated: ${response.data.voice_id}`);
-        // In future we might return the full embedding path if we need to store it
-        // For now, let's assume the worker returns a usable ID or path we can store as "voiceId"
-        return response.data.voice_id || response.data.embedding_path || "higgs_unknown_id";
-      } else {
-        throw new Error(`Higgs Worker Error: ${JSON.stringify(response.data)}`);
-      }
-    } catch (e: any) {
-      console.error(`[Higgs] Failed to generate embedding:`, e.message);
-      if (e.code === 'ECONNREFUSED' || e.code === 'ECONNABORTED') {
-        throw new Error(`[Higgs] Worker unreachable or timed out (${e.code}). Is apps/worker-higgs running at ${this.baseUrl}?`);
-      }
-      throw e;
-    }
-  }
-
-  /**
-   * synthesize: Generates audio from text using the Voice ID.
-   */
   /**
    * synthesize: Generates audio from text using the Voice ID (Creator ID).
    * Returns: Public URL of the generated audio.

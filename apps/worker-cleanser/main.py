@@ -302,6 +302,73 @@ def process_audio(req: ProcessRequest):
             res = supabase.storage.from_("audio").get_public_url(dest_path)
             vocals_url = res
             
+        # E. EMOTION RECOGNITION (SpeechBrain)
+        if HF_TOKEN:  # Verify we can use HF models, SpeechBrain fetches from HF
+            print(f"    Running Emotion Recognition...")
+            try:
+                from speechbrain.inference.interfaces import foreign_class
+                
+                # Load Classifier (using HF_HOME for cache)
+                # Note: This loads the model. Better to load once globally if possible, 
+                # but for simplicity/robustness in serverless (which might recycle env), load here or check global.
+                # Assuming efficient caching by HF library.
+                classifier = foreign_class(
+                    source="speechbrain/emotion-recognition-wav2vec2-IEMOCAP", 
+                    pymodule_file="custom_interface.py", 
+                    classname="CustomEncoderWav2vec2Classifier",
+                    savedir=os.path.join(os.environ["HF_HOME"], "speechbrain_emotions"),
+                    run_opts={"device": device_arg}
+                )
+                
+                # Use original waveform (loaded at line 171) for analysis 
+                # because `vocals_path` might refer to the filtered/compacted audio
+                # which doesn't align with original segment timestamps.
+                
+                analyzed_segments = []
+                for seg in segments:
+                    # Only analyze if duration is sufficient (>1s)
+                    start = float(seg['start'])
+                    end = float(seg['end'])
+                    dur = end - start
+                    
+                    emotion = "neutral"
+                    confidence = 0.0
+                    
+                    if dur > 1.0:
+                        s_frame = int(start * sample_rate)
+                        e_frame = int(end * sample_rate)
+                        # Ensure bounds
+                        s_frame = max(0, s_frame)
+                        e_frame = min(waveform.shape[1], e_frame)
+                        
+                        if e_frame > s_frame:
+                            chunk = waveform[:, s_frame:e_frame]
+                             # SpeechBrain expects (batch, time)
+                             # Our chunk is (channels, time). Take channel 0.
+                            chunk_mono = chunk[0].unsqueeze(0) 
+                            
+                            # Normalize
+                            chunk_mono = chunk_mono / (torch.max(torch.abs(chunk_mono)) + 1e-9)
+                            
+                            # Classify
+                            out_prob, score, index, text_lab = classifier.classify_batch(chunk_mono)
+                            emotion = text_lab[0]
+                            confidence = score[0].item()
+                            
+                    # Update segment
+                    seg['emotion'] = emotion
+                    seg['confidence'] = confidence
+                    analyzed_segments.append(seg)
+                    
+                segments = analyzed_segments
+                print(f"    Emotion Analysis Code: Done")
+
+            except Exception as e:
+                print(f"    Emotion Recognition Failed: {e}")
+                # Don't fail the whole job, just warn
+                import traceback
+                traceback.print_exc()
+
         print(f"--> Done. Vocals: {vocals_url}")
         
         return {
