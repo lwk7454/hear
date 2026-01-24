@@ -127,17 +127,87 @@ resource "terraform_data" "env_update" {
 
   provisioner "remote-exec" {
     inline = [
-      "echo '🚀 Environment variables updated, sync to server...'",
-      "mkdir -p /home/ubuntu/apps/server",
-      "mv -f /tmp/.env_update /home/ubuntu/apps/server/.env",
-      "chown ubuntu:ubuntu /home/ubuntu/apps/server/.env",
-      "if command -v pm2 > /dev/null && pm2 list | grep -q 'server'; then",
-      "  echo '🔄 PM2: Restarting server with new env...'",
-      "  pm2 restart /home/ubuntu/apps/server/ecosystem.config.cjs --update-env",
-      "else",
-      "  echo '⚠️ PM2: Server process not found, skipping restart.'",
-      "fi",
-      "echo '✅ Update complete!'"
+      <<-EOT
+      echo '🚀 Environment variables updated, sync to server...'
+      mkdir -p /home/ubuntu/apps/server
+      mv -f /tmp/.env_update /home/ubuntu/apps/server/.env
+      chown ubuntu:ubuntu /home/ubuntu/apps/server/.env
+
+      # --- CloudWatch Agent Setup ---
+      echo '📦 Ensuring CloudWatch Agent is installed...'
+      if ! command -v amazon-cloudwatch-agent-ctl > /dev/null; then
+        wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -O /tmp/cw-agent.deb
+        sudo dpkg -i /tmp/cw-agent.deb
+        rm /tmp/cw-agent.deb
+      fi
+
+      echo '🔑 Configuring CloudWatch Agent Credentials...'
+      # Extract CW vars from the new .env file
+      export $$(grep '^CW_' /home/ubuntu/apps/server/.env | xargs)
+      
+      # Configure shared credentials file
+      mkdir -p /home/ubuntu/.aws
+      echo "[AmazonCloudWatchAgent]" > /home/ubuntu/.aws/credentials
+      echo "aws_access_key_id = $$CW_ACCESS_KEY" >> /home/ubuntu/.aws/credentials
+      echo "aws_secret_access_key = $$CW_SECRET_KEY" >> /home/ubuntu/.aws/credentials
+      chown -R ubuntu:ubuntu /home/ubuntu/.aws
+
+      # Also for root (service user)
+      sudo mkdir -p /root/.aws
+      sudo cp /home/ubuntu/.aws/credentials /root/.aws/credentials
+
+      echo '📄 Generating CloudWatch Config...'
+      # Get Instance ID
+      INSTANCE_ID=$$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo 'local-server')
+      
+      # Write Config
+      cat <<JSON | sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "root"
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/home/ubuntu/.pm2/logs/server-out.log",
+            "log_group_name": "$$CW_LOG_GROUP_NAME",
+            "log_stream_name": "$${INSTANCE_ID}-stdout",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/home/ubuntu/.pm2/logs/server-error.log",
+            "log_group_name": "$$CW_LOG_GROUP_NAME",
+            "log_stream_name": "$${INSTANCE_ID}-stderr",
+            "timezone": "UTC"
+          },
+          {
+            "file_path": "/var/log/syslog",
+            "log_group_name": "$$CW_LOG_GROUP_NAME",
+            "log_stream_name": "$${INSTANCE_ID}-syslog",
+            "timezone": "UTC"
+          }
+        ]
+      }
+    }
+  }
+}
+JSON
+
+      echo '🚀 Restarting CloudWatch Agent...'
+      sudo amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+      # --- PM2 Restart ---
+      if command -v pm2 > /dev/null && pm2 list | grep -q 'server'; then
+        echo '🔄 PM2: Restarting server with new env...'
+        pm2 restart /home/ubuntu/apps/server/ecosystem.config.cjs --update-env
+      else
+        echo '⚠️ PM2: Server process not found, skipping restart.'
+      fi
+      echo '✅ Update complete!'
+      EOT
     ]
   }
 

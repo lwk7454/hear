@@ -145,6 +145,21 @@ resource "aws_route53_zone" "api" {
   name = local.api_domain
 }
 
+# --- CloudWatch Agent IAM ---
+resource "aws_iam_user" "cw_agent" {
+  name = "hear-${var.environment}-cw-agent"
+  path = "/service-accounts/"
+}
+
+resource "aws_iam_access_key" "cw_agent" {
+  user = aws_iam_user.cw_agent.name
+}
+
+resource "aws_iam_user_policy_attachment" "cw_agent" {
+  user       = aws_iam_user.cw_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 # --- ACM Certificates (Separate for each subdomain to allow auto-validation) ---
 
 # 1. Web Certificate
@@ -242,11 +257,14 @@ module "aws_server" {
     DB_PASSWORD          = data.aws_ssm_parameter.db_password.value
     SUPABASE_URL         = data.aws_ssm_parameter.supabase_url.value
     SUPABASE_SERVICE_KEY = data.aws_ssm_parameter.supabase_service_key.value
-    CORS_ORIGINS         = "https://${local.web_domain}"
-    FRONTEND_URL         = "https://${local.web_domain}"
-    NODE_ENV             = "production"
-    PORT                 = "8000"
-    ENVIRONMENT          = var.environment
+
+    # URLs
+    ALLOWED_FRONTEND_DOMAINS = "https://${local.web_domain},http://localhost:3000,http://localhost:8000"
+    CORS_ORIGINS             = "https://${local.web_domain},http://localhost:3000,http://localhost:8000"
+
+    NODE_ENV    = "production"
+    PORT        = "8000"
+    ENVIRONMENT = var.environment
 
     # Secrets
     JWT_SECRET    = data.aws_ssm_parameter.jwt_secret.value
@@ -274,8 +292,10 @@ module "aws_server" {
     IG_REDIRECT_URI           = "https://${local.api_domain}/auth/instagram/callback"
     ALLOW_TEST_AUTH           = "true" # For dev environment
 
-    # RunPod (if needed by server)
-    RUNPOD_API_KEY = data.aws_ssm_parameter.runpod_api_key.value
+    # CloudWatch Agent
+    CW_ACCESS_KEY     = aws_iam_access_key.cw_agent.id
+    CW_SECRET_KEY     = aws_iam_access_key.cw_agent.secret
+    CW_LOG_GROUP_NAME = "hear-server-${var.environment}"
   }
 }
 
