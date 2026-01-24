@@ -1,4 +1,4 @@
-# End-User App Architecture
+# Consumer App (End-User) Architecture
 
 ## Overview
 

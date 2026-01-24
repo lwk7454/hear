@@ -9,11 +9,15 @@
 
 ## 1. Architecture Design
 
-### **Frontend (Web & App)**
-*   **Service**: **AWS S3** + **CloudFront** (CDN).
-*   **Why**: Extremely low cost, global edge caching, and zero-maintenance static hosting.
-*   **Build Artifact**: Static Export (`next build` -> `out/`).
-*   **Region**: `ca-central-1` (Canada Central).
+### **Frontend Apps**
+*   **Creator Dashboard (`apps/web`)**:
+    *   **Target**: **AWS S3** + **CloudFront**.
+    *   **Build**: Static Export (`next build` -> `out/`).
+    *   **Domain**: `hear-web-dev.wayneliao.dev` (Dev).
+*   **Consumer App (`apps/app`)**:
+    *   **Target**: **Vercel** (Recommended for PWA features) or **AWS S3** + **CloudFront**.
+    *   **Build**: PWA / Static.
+    *   **Domain**: `hear-app-dev.wayneliao.dev` (Dev - Proposed).
 
 ### **Backend (Server)**
 *   **Service**: **AWS Lightsail Container Service** (Micro Power).
@@ -23,10 +27,10 @@
 
 ### **AI Workers (GPU)**
 *   **Service**: **RunPod Serverless**.
-*   **Why**: Pay-per-second GPU usage. We don't need a GPU running 24/7.
+*   **Deployment Model**: **Decentralized**. Each worker has its own Terraform configuration.
 *   **Workers**:
     *   `worker-higgs`: Voice Cloning & Synthesis.
-    *   `worker-cleanser`: Audio source separation (Demucs).
+    *   `worker-cleanser`: Audio source separation (Demucs) & Diarization.
 
 ### **Data Layer**
 *   **Service**: **Supabase** (Pro tier recommended for prod).
@@ -35,7 +39,32 @@
 
 ---
 
-## 2. CI/CD Pipelines (GitHub Actions)
+## 2. Infrastructure Automation (Terraform)
+
+We use Terraform to manage infrastructure. The configuration is split into **Root Infrastructure** and **Worker Infrastructure**.
+
+### Root Infrastructure (`terraform/`)
+Manages shared resources: AWS Networking (Route53, ACM), Lightsail Server, and S3 Buckets.
+
+*   **Location**: `terraform/environments/{dev,prod}`
+*   **Apply**:
+    ```bash
+    cd terraform/environments/dev
+    terraform apply
+    ```
+
+### Worker Infrastructure (`apps/worker-*/terraform`)
+Manages RunPod Endpoints and Network Volumes specific to each worker. This allows workers to be deployed and scaled independently.
+
+*   **Example: Deploying Higgs Worker**:
+    ```bash
+    cd apps/worker-higgs/terraform/environments/dev
+    terraform apply
+    ```
+
+---
+
+## 3. CI/CD Pipelines (GitHub Actions)
 
 We use **GitHub Actions** for automated deployments.
 
@@ -43,11 +72,11 @@ We use **GitHub Actions** for automated deployments.
 | :--- | :--- | :--- | :--- |
 | **Server** | `deploy-server.yml` | Push to `apps/server/**` | 1. Builds Docker Image.<br>2. Pushes directly to Lightsail.<br>3. Updates deployment (Zero Downtime). |
 | **Web** | `deploy-web.yml` | Push to `apps/web/**` | 1. `pnpm build` (Static).<br>2. Syncs to S3 Bucket.<br>3. Invalidates CloudFront Cache. |
-| **Workers** | *Various* | Push to `apps/worker-*` | Builds and pushes Docker images to GHCR for RunPod. |
+| **Workers** | `deploy-worker-*.yml` | Push to `apps/worker-*` | 1. Builds Docker Image.<br>2. Pushes to GHCR.<br>3. (Optional) Auto-updates RunPod Endpoint via Terraform/API. |
 
 ---
 
-## 3. Configuration & Secrets
+## 4. Configuration & Secrets
 
 ### **GitHub Secrets**
 Required for CI/CD pipelines to function:
@@ -56,21 +85,19 @@ Required for CI/CD pipelines to function:
 | :--- | :--- | :--- |
 | `AWS_ACCESS_KEY_ID` | Global | AWS IAM User with S3/Lightsail/CloudFront access. |
 | `AWS_SECRET_ACCESS_KEY` | Global | AWS Secret Key. |
-| `NEXT_PUBLIC_API_URL` | Global | The public URL of the Lightsail Server (e.g., `https://...cs.amazonlightsail.com/`). |
+| `RUNPOD_API_KEY` | Global | Key for deploying/managing RunPod workers. |
+| `CR_PAT` | Global | GitHub Personal Access Token for pushing images to GHCR. |
 
 ### **Environment Variables**
 #### **Backend (`apps/server`)**
 Managed via **Terraform** (`terraform/environments/prod|dev/main.tf`).
 *   `DATABASE_URL`: Connection string to Supabase Postgres.
-*   `SUPABASE_URL` / `KEY`: For Supabase Client.
-*   `GOOGLE_LOGIN_REDIRECT_URI`: Must match the Lightsail URL + `/auth/login/google/callback`.
-
-#### **Frontend (`apps/web`)**
-Baked in at build time via `NEXT_PUBLIC_API_URL` (passed from GitHub Secrets).
+*   `HIGGS_API_URL`: URL of the deployed RunPod worker.
+*   `RUNPOD_API_KEY`: Used to wake/manage workers programmatically.
 
 ---
 
-## 4. Manual Deployment Guide
+## 5. Manual Deployment Guide
 
 ### **Deploying Development (`dev`)**
 We have a helper script that orchestrates Terraform and local checks:
@@ -95,15 +122,15 @@ export AWS_PROFILE=your-profile
 
 ---
 
-## 5. Troubleshooting
+## 6. Troubleshooting
 
 ### **"Limit Exceeded" on Lightsail**
 *   AWS restricts the number of container services per region (default 3).
 *   **Fix**: Check other regions or delete unused services via `aws lightsail get-container-services`.
 
-### **CORS Errors**
-*   Ensure `NEXT_PUBLIC_API_URL` matches the running server exactly (HTTPS).
-*   Check `CORS_ORIGINS` env var in the Server Terraform module.
+### **RunPod Worker Cold Starts**
+*   Workers scale to 0 when unused. First request may take 30-60s.
+*   **Fix**: Use `idle_timeout` in Terraform to keep workers warm longer, or set `min_workers` to 1 (Costly).
 
 ### **Frontend 404s**
 *   If S3 deploy succeeds but site is broken, CloudFront invalidation might have failed or takes time to propagate.

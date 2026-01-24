@@ -16,6 +16,34 @@ const OAuthCallbackSchema = z.object({
     state: z.string().optional(),
 });
 
+function getSafeRedirectUri(requestedUri?: string): string {
+    const allowed = env.ALLOWED_FRONTEND_DOMAINS.split(',').map(d => d.trim()).filter(Boolean);
+    const defaultUri = allowed[0]; // First one is default
+
+    if (!defaultUri) throw new Error("ALLOWED_FRONTEND_DOMAINS is empty");
+
+    if (!requestedUri) return defaultUri;
+
+    const allowedList = [
+        ...allowed
+    ].filter(Boolean);
+
+    try {
+        // Normalize by checking origin
+        const requestedUrl = new URL(requestedUri);
+        const isAllowed = allowedList.some(allowedUri => {
+            try {
+                return new URL(allowedUri).origin === requestedUrl.origin;
+            } catch { return false; }
+        });
+
+        if (isAllowed) return requestedUri;
+    } catch (e) {
+        // Invalid URL
+    }
+    return defaultUri;
+}
+
 // Helper for Google Login
 // Validated by env.ts
 // if (!process.env.FRONTEND_URL) throw new Error("Missing FRONTEND_URL");
@@ -55,17 +83,23 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     // --- Login: Google ---
     fastify.get('/auth/login/google', async (request, reply) => {
+        const { redirectUri } = OAuthUrlSchema.parse(request.query);
+        const safeRedirectUri = getSafeRedirectUri(redirectUri);
+
+        const state = JSON.stringify({ redirectUri: safeRedirectUri });
+
         const url = googleLoginClient.generateAuthUrl({
             access_type: 'offline',
             scope: ['https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/userinfo.email'],
-            redirect_uri: env.GOOGLE_LOGIN_REDIRECT_URI!
+            redirect_uri: env.GOOGLE_LOGIN_REDIRECT_URI!,
+            state // Pass state with redirectUri
         });
         console.log('Generated Login URL:', url); // Debug
         return { url };
     });
 
     fastify.get('/auth/login/google/callback', async (request, reply) => {
-        const { code } = OAuthCallbackSchema.parse(request.query);
+        const { code, state } = OAuthCallbackSchema.parse(request.query);
         try {
             const { tokens } = await googleLoginClient.getToken(code);
             googleLoginClient.setCredentials(tokens);
@@ -95,7 +129,21 @@ export async function authRoutes(fastify: FastifyInstance) {
                 sameSite: 'lax'
             });
 
-            return reply.redirect(`${env.FRONTEND_URL}/creator`);
+            // Handle State for Redirect
+            let finalRedirect = `${getSafeRedirectUri()}/creator`;
+            if (state) {
+                try {
+                    const parsedState = JSON.parse(state);
+                    if (parsedState.redirectUri) {
+                        const safeUri = getSafeRedirectUri(parsedState.redirectUri);
+                        finalRedirect = `${safeUri}/creator`;
+                    }
+                } catch (e) {
+                    console.error("Failed to parse state", e);
+                }
+            }
+
+            return reply.redirect(finalRedirect);
         } catch (e) {
             console.error(e);
             return reply.code(500).send({ error: 'Login failed' });
@@ -125,17 +173,41 @@ export async function authRoutes(fastify: FastifyInstance) {
             'https://www.googleapis.com/auth/youtube.readonly'
         ];
 
+        const { redirectUri } = OAuthUrlSchema.parse(request.query);
+        const safeRedirectUri = getSafeRedirectUri(redirectUri);
+
+        const statePayload = JSON.stringify({ userId: user.id, redirectUri: safeRedirectUri });
+
         const url = scanClient.generateAuthUrl({
             access_type: 'offline',
             scope: scopes,
-            state: user.id // Pass Logged-in User ID
+            state: statePayload
         });
 
         return { url };
     });
 
     fastify.get('/auth/youtube/callback', async (request, reply) => {
-        const { code, state: userId } = OAuthCallbackSchema.parse(request.query);
+        const { code, state } = OAuthCallbackSchema.parse(request.query);
+
+        let userId = state;
+        let redirectUri = `${getSafeRedirectUri()}/creator?connected=youtube`;
+
+        if (state) {
+            try {
+                const parsed = JSON.parse(state);
+                if (parsed.userId) userId = parsed.userId;
+                if (parsed.redirectUri) {
+                    const safeUri = getSafeRedirectUri(parsed.redirectUri);
+                    redirectUri = `${safeUri}/creator?connected=youtube`;
+                }
+            } catch (e) {
+                // Legacy: state is just userId
+            }
+        }
+        
+        // Validation
+        if (!userId) return reply.code(400).send({ error: "Missing state/userId" });
 
         try {
             const { tokens } = await scanClient.getToken(code);
@@ -157,7 +229,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            return reply.redirect(`${env.FRONTEND_URL}/creator?connected=youtube`);
+            return reply.redirect(redirectUri);
 
         } catch (e) {
             console.error(e);
@@ -181,13 +253,38 @@ export async function authRoutes(fastify: FastifyInstance) {
             return reply.code(401).send({ error: "Unauthorized" });
         }
 
-        const url = `https://api.instagram.com/oauth/authorize?client_id=${IG_CLIENT_ID}&redirect_uri=${IG_REDIRECT_URI}&scope=user_profile,user_media&response_type=code&state=${user.id}`;
+        const { redirectUri } = OAuthUrlSchema.parse(request.query);
+        const safeRedirectUri = getSafeRedirectUri(redirectUri);
+        const statePayload = JSON.stringify({ userId: user.id, redirectUri: safeRedirectUri });
+        
+        // Encode state for URL
+        const encodedState = encodeURIComponent(statePayload);
+
+        const url = `https://api.instagram.com/oauth/authorize?client_id=${IG_CLIENT_ID}&redirect_uri=${IG_REDIRECT_URI}&scope=user_profile,user_media&response_type=code&state=${encodedState}`;
 
         return { url };
     });
 
     fastify.get('/auth/instagram/callback', async (request, reply) => {
-        const { code, state: userId } = OAuthCallbackSchema.parse(request.query);
+        const { code, state } = OAuthCallbackSchema.parse(request.query);
+
+        let userId = state;
+        let redirectUri = `${getSafeRedirectUri()}/creator?connected=instagram`;
+
+        if (state) {
+            try {
+                const parsed = JSON.parse(state);
+                if (parsed.userId) userId = parsed.userId;
+                if (parsed.redirectUri) {
+                    const safeUri = getSafeRedirectUri(parsed.redirectUri);
+                    redirectUri = `${safeUri}/creator?connected=instagram`;
+                }
+            } catch (e) {
+                // Legacy
+            }
+        }
+
+        if (!userId) return reply.code(400).send({ error: "Missing state/userId" });
 
         try {
             const formData = new URLSearchParams();
@@ -218,7 +315,7 @@ export async function authRoutes(fastify: FastifyInstance) {
                 }
             });
 
-            return reply.redirect(`${env.FRONTEND_URL}/creator?connected=instagram`);
+            return reply.redirect(redirectUri);
 
         } catch (e) {
             console.error(e);

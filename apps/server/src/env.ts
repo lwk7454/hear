@@ -17,19 +17,19 @@ const envSchema = z.object({
   ALLOW_TEST_AUTH: z.enum(['true', 'false']).optional(),
   
   // URLs
-  FRONTEND_URL: z.url().min(1),
+  ALLOWED_FRONTEND_DOMAINS: z.string().min(1), // Comma-separated list of allowed origins. The first one is default.
   CORS_ORIGINS: z.string().optional(),
   
   // Services
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_BASE_URL: z.string().optional(),
   LLM_MODEL: z.string().default('gpt-4o'),
-  VISION_MODEL: z.string().default('qwen/qwen2-vl-72b-instruct'),
+  VISION_MODEL: z.string().default('z-ai/glm-4.6v'),
   
   SUPABASE_URL: z.url().min(1),
   SUPABASE_SERVICE_KEY: z.string().min(1),
   
-  HIGGS_API_URL: z.string().url().default('http://localhost:8002'),
+  HIGGS_API_URL: z.url().default('http://localhost:8002'),
   HIGGS_TIMEOUT: z.string().default('60000').transform(Number),
 
   CLEANSER_WORKER_URL: z.url().default('http://127.0.0.1:8001'),

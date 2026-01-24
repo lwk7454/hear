@@ -1,44 +1,62 @@
-# Hear GPU Worker (Python)
+# Worker Cleanser
 
-This service handles heavy AI audio processing (Demucs, Diarization, Cloning).
-It is designed to run on a machine with a dedicated GPU (e.g., Windows with NVIDIA RTX, or Linux Server).
+This worker handles audio pre-processing tasks including **Source Separation** (Demucs) and **Speaker Diarization** (Pyannote). It is essential for the ingestion pipeline to isolate clean vocals from YouTube videos.
 
-## Setup (Windows/Linux/Mac)
+## Features
+- **FastAPI** based REST API.
+- **Demucs (htdemucs)**: Separates vocals from background music/noise.
+- **Pyannote Audio**: Performs speaker diarization to identify who is speaking when.
+- **GPU Accelerated**: Optimized for CUDA execution.
 
-### 1. Prerequisites
-- Python 3.11 (Highly Recommended for Pyannote/Torch compatibility)
-- NVIDIA Driver (if using CUDA)
-- FFmpeg (Must be in PATH)
+## API Endpoints
+- `POST /cleanse`: Upload audio/video URL or file → Returns isolated vocal track.
+- `POST /diarize`: Upload audio → Returns speaker segments (timestamps).
 
-### 2. Setup
+## Setup (Local)
+1. Run `setup.sh` (Linux/Mac) or `setup.bat` (Windows) to create a virtual environment and install dependencies.
+   *   *Note: Requires `ffmpeg` installed on the system.*
+2. Start the worker:
+   ```bash
+   source venv/bin/activate
+   python main.py
+   ```
+   Server runs on `http://0.0.0.0:8001`.
 
-**Mac/Linux:**
-```bash
-# Installs FFmpeg, Python deps, creates venv
-./setup.sh
-```
+## Cloud Deployment
+The worker is deployd as a **RunPod Serverless Endpoint**.
 
-**Windows (PowerShell):**
-```powershell
-.\setup.ps1
-```
+### Infrastructure via Terraform
+Each worker manages its own infrastructure to allow independent scaling.
 
-### 3. Running
-**Mac/Linux:**
-```bash
-source venv/bin/activate
-python main.py
-```
+1. Navigate to `terraform/environments/dev/` or `prod/`.
+2. Configure your `terraform.tfvars`:
+   ```hcl
+   runpod_api_key   = "your-key"
+   github_username  = "your-user"
+   environment      = "dev"
+   ```
+3. Deploy:
+   ```bash
+   terraform init
+   terraform apply
+   ```
 
-**Windows:**
-```powershell
-.\venv\Scripts\Activate
-python main.py
-```
+### Docker Build & Push
+Images are hosted on GitHub Container Registry (GHCR).
 
+1.  **Login**:
+    ```bash
+    echo $CR_PAT | docker login ghcr.io -u USERNAME --password-stdin
+    ```
+2.  **Build & Push**:
+    ```bash
+    # Use the helper script
+    ./push-image.sh
+    ```
 
-### 5. Config
-Ensure your `apps/server/.env` has:
-```
-WORKER_URL=http://<YOUR_WORKER_IP>:8001
-```
+## Technical Details
+- **Base Image**: `python:3.11-slim`
+- **GPU Requirement**: >= 8GB VRAM recommended.
+- **Models**:
+    - `htdemucs` (Downloaded to local cache on first run)
+    - `pyannote/speaker-diarization-3.1` (Requires HuggingFace Auth Token in env if not cached)

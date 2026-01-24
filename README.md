@@ -35,10 +35,30 @@
     *   **Text Chat (Baseline)**: Always-available, low-cost intimacy for the massive fan base.
     *   **Voice-to-Voice (Premium)**: High-fidelity, emotional audio calls for super-fans, utilizing GLM-4-Voice for pseudo-duplex interaction.
 
-## 3. Architecture Overview
-We separate the **Persona Brain** from the **Interaction Modality**, and provide **two distinct UX surfaces**:
-- **Creator Dashboard** (`apps/web`): For creators to configure and train their AI clones
-- **End-User App** (`apps/app`): For fans to discover and interact with creator clones
+## Architecture Overview
+
+**Hear** is composed of four main applications:
+
+| App | Path | Description | Tech Stack |
+| :--- | :--- | :--- | :--- |
+| **Creator Dashboard** | [`apps/web`](apps/web) | Portal for creators to onboard and manage their AI. | Next.js 15, Tailwind |
+| **Consumer App** | [`apps/app`](apps/app) | Mobile-first PWA for fans to chat with AI personas. | Next.js 16, PWA |
+| **Backend API** | [`apps/server`](apps/server) | Central API gateway and orchestration layer. | Fastify, Node.js |
+| **AI Workers** | [`apps/worker-*`](apps/) | Semantic/Voice processing units (Higgs, Cleanser). | Python, RunPod |
+
+## Documentation
+
+*   **[Start Here: Documentation Index](docs/README.md)**
+*   [Deployment Guide](docs/deployment.md)
+*   [Consumer App Architecture](docs/app_architecture.md)
+
+## Development
+
+### Prerequisites
+*   Node.js 20+ (managed via `volta` or `nvm`)
+*   pnpm 9+
+*   Python 3.10+ (for workers)
+*   Docker (for deployment builds)
 
 ```mermaid
 ---
